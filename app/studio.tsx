@@ -87,6 +87,8 @@ export default function Studio() {
     const q = new URLSearchParams(location.search);
     setCourseId(q.get("course") || "");
     setLessonId(q.get("lesson") || "");
+    if (q.get("view") === "sessions" || q.get("view") === "admin")
+      setView(q.get("view")!);
   }, [load]);
   const course =
     state?.courses.find((c) => c.id === courseId) || state?.courses[0];
@@ -111,8 +113,8 @@ export default function Studio() {
     history.replaceState(null, "", `?course=${course?.id}&lesson=${l.id}`);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
-  const toolsState = useRef({state,course,lesson,view,selectLesson});
-  toolsState.current = {state,course,lesson,view,selectLesson};
+  const toolsState = useRef({ state, course, lesson, view, selectLesson });
+  toolsState.current = { state, course, lesson, view, selectLesson };
   useEffect(() => {
     const ctx = (document as any).modelContext;
     if (!ctx?.registerTool) return;
@@ -158,7 +160,9 @@ export default function Studio() {
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
       execute: (input: any) => {
-        const l = toolsState.current.course?.lessons.find((l) => l.id === input?.lessonId);
+        const l = toolsState.current.course?.lessons.find(
+          (l) => l.id === input?.lessonId,
+        );
         if (!l || l.locked)
           throw new Error("Materi tidak tersedia atau masih terkunci.");
         toolsState.current.selectLesson(l);
@@ -200,7 +204,13 @@ export default function Studio() {
               aria-label={label}
               className={view === key ? "active" : ""}
               onClick={() => {
-                if (view === "admin" && key !== "admin" && adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) return;
+                if (
+                  view === "admin" &&
+                  key !== "admin" &&
+                  adminDirty &&
+                  !confirm("Abaikan perubahan course yang belum disimpan?")
+                )
+                  return;
                 setView(key);
                 setMobile(false);
               }}
@@ -243,7 +253,7 @@ export default function Studio() {
           {signIn ? (
             <a
               className="primary button-link"
-              href="/signin-with-chatgpt?return_to=/"
+              href={`/signin-with-chatgpt?return_to=${encodeURIComponent("/learn" + (typeof location !== "undefined" ? location.search : ""))}`}
               target="_top"
             >
               Masuk dengan ChatGPT

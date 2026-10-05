@@ -45,6 +45,14 @@ export type Course = {
   level: string;
   published: boolean;
   sample: boolean;
+  overview?: {
+    outcomes: string[];
+    requirements: string[];
+    audience: string;
+    mentorName: string;
+    mentorBio: string;
+    format: "self_paced" | "blended";
+  };
   lessons: Lesson[];
 };
 export type Progress = {

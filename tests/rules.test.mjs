@@ -104,3 +104,34 @@ test("sandbox rejects unsafe endpoint and incomplete service responses", async (
     ),
   );
 });
+
+test("catalog exposes curriculum summaries without lesson contents, keys or private tests", async () => {
+  const { catalogCourse } = await import("../lib/catalog.ts");
+  const c = structuredClone(sampleCourse);
+  c.overview = {
+    outcomes: ["Memahami sensor"],
+    requirements: ["Laptop"],
+    audience: "Pemula",
+    mentorName: "Pengajar",
+    mentorBio: "Profil",
+    format: "blended",
+  };
+  const catalog = catalogCourse(c);
+  assert.equal(catalog.lessonCount, 5);
+  assert.equal(catalog.minutes, 60);
+  assert.equal(catalog.curriculum[1].required, true);
+  assert.equal(catalog.overview.mentorName, "Pengajar");
+  for (const l of catalog.curriculum) {
+    assert.equal("blocks" in l, false);
+    assert.equal(typeof l.quiz, "boolean");
+    assert.equal("exercise" in l, false);
+  }
+  assert.equal("lessons" in catalog, false);
+  assert.equal(
+    courseSchema.safeParse({
+      ...c,
+      overview: { ...c.overview, outcomes: Array(21).fill("x") },
+    }).success,
+    false,
+  );
+});

@@ -14,6 +14,16 @@ export const courseSchema = z
     level: z.string().max(40),
     published: z.boolean(),
     sample: z.boolean(),
+    overview: z
+      .object({
+        outcomes: z.array(z.string().trim().min(1).max(500)).max(20),
+        requirements: z.array(z.string().trim().min(1).max(500)).max(20),
+        audience: z.string().max(1000),
+        mentorName: z.string().max(160),
+        mentorBio: z.string().max(2000),
+        format: z.enum(["self_paced", "blended"]),
+      })
+      .optional(),
     lessons: z
       .array(
         z.object({

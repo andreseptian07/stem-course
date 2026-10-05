@@ -66,10 +66,16 @@ export default function Admin({
   useEffect(() => {
     onDirtyChange(dirty);
     const protect = (event: BeforeUnloadEvent) => {
-      if (dirty) { event.preventDefault(); event.returnValue = ""; }
+      if (dirty) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
     };
     window.addEventListener("beforeunload", protect);
-    return () => { window.removeEventListener("beforeunload", protect); onDirtyChange(false); };
+    return () => {
+      window.removeEventListener("beforeunload", protect);
+      onDirtyChange(false);
+    };
   }, [dirty, onDirtyChange]);
   async function load() {
     try {
@@ -120,7 +126,20 @@ export default function Admin({
     try {
       const d = await api("/api/studio", {
         action: "saveCourse",
-        course: editing,
+        course: {
+          ...editing,
+          overview: editing.overview
+            ? {
+                ...editing.overview,
+                outcomes: editing.overview.outcomes
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+                requirements: editing.overview.requirements
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              }
+            : undefined,
+        },
       });
       setEditing(d.course);
       setDirty(false);
@@ -443,6 +462,7 @@ export default function Admin({
                     Tandai sebagai course contoh
                   </label>
                 </div>
+                <CourseOverview course={editing} update={edit} />
               </details>
               <div className="authoring">
                 <aside className="author-outline">
@@ -1362,5 +1382,98 @@ function SessionAdmin({
         ))}
       </div>
     </div>
+  );
+}
+
+function CourseOverview({
+  course,
+  update,
+}: {
+  course: Course;
+  update: (c: Course) => void;
+}) {
+  const o = course.overview || {
+    outcomes: [],
+    requirements: [],
+    audience: "",
+    mentorName: "",
+    mentorBio: "",
+    format: "self_paced" as const,
+  };
+  const patch = (p: Partial<NonNullable<Course["overview"]>>) =>
+    update({ ...course, overview: { ...o, ...p } });
+  return (
+    <section className="config-card" style={{ marginTop: 24 }}>
+      <div className="section-heading">
+        <h3>Informasi halaman detail course</h3>
+        <a
+          className="secondary button-link"
+          href={`/courses/${encodeURIComponent(course.id)}`}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Lihat halaman detail
+        </a>
+      </div>
+      <p className="small">
+        Informasi ini tampil di katalog setelah course diterbitkan. Simpan
+        perubahan sebelum membuka pratinjau.
+      </p>
+      <div className="form-grid">
+        <Field
+          label="Tujuan belajar"
+          hint="Satu tujuan per baris, maksimal 20."
+        >
+          <textarea
+            rows={4}
+            value={o.outcomes.join("\n")}
+            onChange={(e) => patch({ outcomes: e.target.value.split("\n") })}
+          />
+        </Field>
+        <Field
+          label="Prasyarat dan kebutuhan alat"
+          hint="Satu kebutuhan per baris, maksimal 20."
+        >
+          <textarea
+            rows={4}
+            value={o.requirements.join("\n")}
+            onChange={(e) =>
+              patch({ requirements: e.target.value.split("\n") })
+            }
+          />
+        </Field>
+        <Field label="Peserta yang dituju">
+          <textarea
+            rows={3}
+            value={o.audience}
+            onChange={(e) => patch({ audience: e.target.value })}
+          />
+        </Field>
+        <Field label="Format belajar">
+          <select
+            value={o.format}
+            onChange={(e) =>
+              patch({ format: e.target.value as typeof o.format })
+            }
+          >
+            <option value="self_paced">Belajar mandiri</option>
+            <option value="blended">Mandiri + sesi mentor</option>
+          </select>
+        </Field>
+        <Field label="Nama mentor">
+          <input
+            value={o.mentorName}
+            onChange={(e) => patch({ mentorName: e.target.value })}
+          />
+        </Field>
+        <Field label="Profil mentor">
+          <textarea
+            rows={3}
+            value={o.mentorBio}
+            onChange={(e) => patch({ mentorBio: e.target.value })}
+          />
+        </Field>
+      </div>
+    </section>
   );
 }

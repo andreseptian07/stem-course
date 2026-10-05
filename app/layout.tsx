@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "STEM Studio — Ruang Belajar",
+  title: "STEM Studio — Belajar lewat praktik",
   description:
     "Belajar STEM melalui materi, praktikum, latihan kode, dan pendampingan mentor.",
   other: {

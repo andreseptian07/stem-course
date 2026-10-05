@@ -10,6 +10,9 @@ Kode peserta dijalankan melalui Judge0 di mesin sandbox terpisah. Bahasa backend
 
 ## Fitur tersedia
 
+- Beranda `/`, katalog `/courses` dengan pencarian/filter, dan detail `/courses/[id]`. Ruang belajar sekarang di `/learn`; tautan lama `/?course=...` dialihkan ke ruang belajar.
+- Informasi detail dikelola di Pengaturan course: tujuan, prasyarat/alat, peserta yang dituju, format belajar, dan profil mentor. Course draft tidak tampil di katalog. Estimasi durasi dihitung dari materi; jadwal berasal dari sesi admin.
+- API katalog hanya mengirim ringkasan kurikulum, bukan blok materi, kunci jawaban, hidden tests, atau tautan meeting. Akses Site tetap privat; halaman depan belum dibuka untuk pengunjung internet umum.
 - Course draft/terbit; modul dan urutan materi; blok teks, judul, catatan, video HTTPS, gambar HTTPS, kode, dan diagram sederhana.
 - Tes review atau wajib lulus, nilai minimum, batas percobaan, pilihan jawaban tunggal/jamak, pembahasan configurable.
 - Penguncian materi divalidasi pada server. Kunci jawaban dan hidden test case tidak dikirim lewat API peserta. Revisi materi membatalkan progres lama pada materi yang berubah.
