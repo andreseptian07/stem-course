@@ -1,6 +1,3 @@
-// Intentionally empty by default.
-// Add Drizzle tables here when the site actually needs a database.
-// See examples/d1/db/schema.ts for an opt-in example.
 import {
   sqliteTable,
   text,
@@ -17,6 +14,21 @@ export const users = sqliteTable("users", {
   name: text("name").notNull(),
   role: text("role").notNull().default("student"),
 });
+export const profiles = sqliteTable("profiles", {
+  userId: text("user_id").primaryKey(),
+  data: text("data").notNull(),
+  version: integer("version").notNull().default(1),
+  updatedAt: text("updated_at").notNull(),
+});
+export const enrollments = sqliteTable(
+  "enrollments",
+  {
+    userId: text("user_id").notNull(),
+    courseId: text("course_id").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.courseId] })],
+);
 export const courses = sqliteTable("courses", {
   id: text("id").primaryKey(),
   data: text("data").notNull(),

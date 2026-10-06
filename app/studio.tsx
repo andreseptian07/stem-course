@@ -230,9 +230,14 @@ export default function Studio() {
             <LogOut size={16} />
           </a>
         )}
-        <span className="avatar" title={state?.user.name}>
+        <a
+          className="avatar"
+          title="Dashboard dan profil saya"
+          aria-label="Dashboard dan profil saya"
+          href="/dashboard"
+        >
           ST
-        </span>
+        </a>
       </header>
       {!state ? (
         <main className="welcome">

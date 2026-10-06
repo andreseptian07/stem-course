@@ -52,18 +52,25 @@ export async function identity() {
     .prepare("SELECT value FROM settings WHERE key='owner'")
     .first<{ value: string }>();
   const role = owner?.value === signed.userId ? "owner" : "student";
+  const profile = await d
+    .prepare("SELECT data FROM profiles WHERE user_id=?")
+    .bind(signed.userId)
+    .first<{ data: string }>();
+  const name = profile
+    ? JSON.parse(profile.data).displayName || signed.displayName
+    : signed.displayName;
   await d
     .prepare(
       "INSERT INTO users(id,name,role) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role",
     )
-    .bind(signed.userId, signed.displayName, role)
+    .bind(signed.userId, name, role)
     .run();
   if (role === "owner")
     await d
       .prepare("INSERT OR IGNORE INTO courses(id,data,version) VALUES(?,?,1)")
       .bind(sampleCourse.id, JSON.stringify(sampleCourse))
       .run();
-  return { id: signed.userId, name: signed.displayName, role };
+  return { id: signed.userId, name, role };
 }
 export function owner(user: { role: string }) {
   if (user.role !== "owner")

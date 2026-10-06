@@ -29,7 +29,7 @@ const duration = (minutes: number) =>
     : `${minutes} menit`;
 const courseUrl = (id: string) => `/courses/${encodeURIComponent(id)}`;
 const learnUrl = (c: CatalogCourse) =>
-  `/learn?course=${encodeURIComponent(c.id)}`;
+  `/dashboard?join=${encodeURIComponent(c.id)}`;
 const when = (value: string) =>
   new Intl.DateTimeFormat("id-ID", {
     dateStyle: "medium",
@@ -165,9 +165,9 @@ export default function Portal({
           </a>
           <a href="/learn?view=sessions">Sesi mentor</a>
         </nav>
-        <a className="portal-login" href="/learn">
+        <a className="portal-login" href="/dashboard">
           {data?.user ? <BookOpen size={17} /> : <LogIn size={17} />}{" "}
-          {data?.user ? "Ruang belajar" : "Masuk"}
+          {data?.user ? "Dashboard" : "Masuk"}
         </a>
       </header>
       <main id="portal-content">
@@ -708,7 +708,7 @@ function CourseDetail({
               </div>
             </dl>
             <a className="primary button-link" href={learnUrl(c)}>
-              Buka course
+              Mulai belajar
             </a>
             {!data.user && (
               <small>Masuk dengan ChatGPT untuk menyimpan progres.</small>

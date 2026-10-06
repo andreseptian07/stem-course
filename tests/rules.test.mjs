@@ -135,3 +135,64 @@ test("catalog exposes curriculum summaries without lesson contents, keys or priv
     false,
   );
 });
+
+test("dashboard ignores stale completion and resumes prerequisite rather than locked content", async () => {
+  const { dashboardCourse } = await import("../lib/account.ts");
+  const c = structuredClone(sampleCourse);
+  const p = c.lessons.map((l) => ({
+    lessonId: l.id,
+    revision: l.revision,
+    complete: 1,
+    quizPassed: 1,
+    codePassed: 1,
+    quizAttempts: 1,
+    codeAttempts: 0,
+    score: 100,
+  }));
+  const done = dashboardCourse(c, p, "2026-10-05T00:00:00Z");
+  assert.equal(done.finished, true);
+  assert.equal(done.percent, 100);
+  assert.equal(done.resumeLesson, "reflection");
+  const revised = p.map((x) =>
+    x.lessonId === "sensor" ? { ...x, revision: 0 } : x,
+  );
+  const stale = dashboardCourse(c, revised, null);
+  assert.equal(stale.completed, 4);
+  assert.equal(stale.percent, 80);
+  assert.equal(stale.stale, 1);
+  assert.equal(stale.resumeLesson, "sensor");
+  assert.equal(stale.finished, false);
+  assert.equal("lessons" in stale, false);
+  const partial = dashboardCourse(
+    c,
+    p.map((x) => ({
+      ...x,
+      complete: x.lessonId === "coding" ? 0 : 1,
+      quizPassed: 0,
+    })),
+    null,
+  );
+  assert.equal(partial.resumeLesson, "sensor");
+});
+test("profile validation cannot accept client roles or another account ID", async () => {
+  const { emptyProfile, profileSchema } = await import("../lib/account.ts");
+  const p = emptyProfile("Peserta");
+  assert.equal(profileSchema.safeParse(p).success, true);
+  assert.equal(profileSchema.safeParse({ ...p, role: "owner" }).success, false);
+  assert.equal(
+    profileSchema.safeParse({ ...p, userId: "someone_else" }).success,
+    false,
+  );
+  assert.equal(
+    profileSchema.safeParse({ ...p, displayName: "  " }).success,
+    false,
+  );
+  assert.equal(
+    profileSchema.safeParse({ ...p, interests: ["Coding", "Coding"] }).success,
+    false,
+  );
+  assert.equal(
+    profileSchema.safeParse({ ...p, bio: "x".repeat(1001) }).success,
+    false,
+  );
+});

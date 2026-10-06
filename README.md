@@ -10,6 +10,9 @@ Kode peserta dijalankan melalui Judge0 di mesin sandbox terpisah. Bahasa backend
 
 ## Fitur tersedia
 
+- Dashboard `/dashboard`: course yang diikuti, progres berdasarkan revisi materi, tombol melanjutkan, filter status, dan sesi mentor yang didaftarkan. Course dengan progres lama tetap dikenali. Tombol Mulai belajar di detail course menambahkan enrollment tanpa pembayaran dan aman dipanggil berulang.
+- Profil `/profile`: nama tampilan, institusi, biodata, minat, tujuan belajar, dan warna avatar inisial. Email mengikuti akun ChatGPT dan hanya tampil pada pemilik akun. Belum ada unggah foto. Profil memakai versi untuk menolak penimpaan dari tab lain; perubahan yang belum disimpan dilindungi saat navigasi.
+- Profil dan enrollment disimpan di D1 melalui migrasi tambahan `drizzle/0001_fair_timeslip.sql`. API akun selalu memakai identitas server, tidak menerima role atau ID akun lain dari isian profil. Profil pribadi tidak dimasukkan dalam respons katalog.
 - Beranda `/`, katalog `/courses` dengan pencarian/filter, dan detail `/courses/[id]`. Ruang belajar sekarang di `/learn`; tautan lama `/?course=...` dialihkan ke ruang belajar.
 - Informasi detail dikelola di Pengaturan course: tujuan, prasyarat/alat, peserta yang dituju, format belajar, dan profil mentor. Course draft tidak tampil di katalog. Estimasi durasi dihitung dari materi; jadwal berasal dari sesi admin.
 - API katalog hanya mengirim ringkasan kurikulum, bukan blok materi, kunci jawaban, hidden tests, atau tautan meeting. Akses Site tetap privat; halaman depan belum dibuka untuk pengunjung internet umum.
@@ -51,6 +54,8 @@ npm run build
 ```
 
 Pengujian aturan mencakup syarat progres, revisi, penilaian multi-jawaban, penyembunyian kunci/test tersembunyi, validasi isian, dan kontrak adapter Judge0. Uji browser dilakukan pada database lokal, terpisah dari data hosting.
+
+Tambahan `node tests/account-api.mjs` dijalankan hanya dengan pratinjau localhost dan mock login aktif. Tes ini menyimpan ulang profil lokal tanpa mengubah isi, menaikkan versinya, serta mendaftarkan course contoh. Pemeriksaan mencakup akses anonim, penolakan role/ID akun lain, origin, konflik versi, persistensi, privasi katalog, dan enrollment idempotent. Jangan arahkan tes ini ke hosting produksi.
 
 ## Struktur kode
 

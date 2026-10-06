@@ -39,9 +39,9 @@ async function sessions(user: { id: string; role: string }) {
   return (
     await db()
       .prepare(
-        `SELECT s.*,s.course_id AS courseId,s.starts_at AS startsAt,(SELECT count(*) FROM rsvps WHERE session_id=s.id) AS count,EXISTS(SELECT 1 FROM rsvps WHERE session_id=s.id AND user_id=?) AS joined FROM sessions s JOIN courses c ON c.id=s.course_id WHERE (?='owner' OR json_extract(c.data,'$.published')=1) ORDER BY s.starts_at`,
+        `SELECT s.id,s.course_id AS courseId,s.title,s.kind,s.starts_at AS startsAt,s.duration,s.location,s.capacity,CASE WHEN ?='owner' OR EXISTS(SELECT 1 FROM rsvps WHERE session_id=s.id AND user_id=?) THEN s.url ELSE '' END AS url,(SELECT count(*) FROM rsvps WHERE session_id=s.id) AS count,EXISTS(SELECT 1 FROM rsvps WHERE session_id=s.id AND user_id=?) AS joined FROM sessions s JOIN courses c ON c.id=s.course_id WHERE (?='owner' OR json_extract(c.data,'$.published')=1) ORDER BY s.starts_at`,
       )
-      .bind(user.id, user.role)
+      .bind(user.role, user.id, user.id, user.role)
       .all()
   ).results;
 }
@@ -88,7 +88,8 @@ export async function GET(req: Request) {
     if (q.get("discussion")) {
       const courseId = q.get("discussion")!,
         lessonId = q.get("lesson") || "";
-      if (lessonId && u.role !== 'owner') await accessible(u, courseId, lessonId);
+      if (lessonId && u.role !== "owner")
+        await accessible(u, courseId, lessonId);
       else await course(courseId, u);
       return json({
         messages: (
@@ -273,8 +274,15 @@ export async function POST(req: Request) {
       if (Date.parse(s.startsAt) <= Date.now())
         throw new AppError(400, "Pilih waktu sesi yang akan datang.");
       const id = s.id || crypto.randomUUID();
-      const registered = await db().prepare("SELECT COUNT(*) AS total FROM rsvps WHERE session_id=?").bind(id).first<{total:number}>();
-      if ((registered?.total || 0) > s.capacity) throw new AppError(400, "Kapasitas tidak boleh lebih kecil dari jumlah peserta terdaftar.");
+      const registered = await db()
+        .prepare("SELECT COUNT(*) AS total FROM rsvps WHERE session_id=?")
+        .bind(id)
+        .first<{ total: number }>();
+      if ((registered?.total || 0) > s.capacity)
+        throw new AppError(
+          400,
+          "Kapasitas tidak boleh lebih kecil dari jumlah peserta terdaftar.",
+        );
       await db()
         .prepare(
           "INSERT INTO sessions(id,course_id,title,kind,starts_at,duration,location,url,capacity) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id,title=excluded.title,kind=excluded.kind,starts_at=excluded.starts_at,duration=excluded.duration,location=excluded.location,url=excluded.url,capacity=excluded.capacity",
@@ -332,7 +340,8 @@ export async function POST(req: Request) {
           parentId: z.string().max(80).nullable().optional(),
         })
         .parse(b);
-      if (m.lessonId && u.role !== 'owner') await accessible(u, m.courseId, m.lessonId);
+      if (m.lessonId && u.role !== "owner")
+        await accessible(u, m.courseId, m.lessonId);
       else await course(m.courseId, u);
       if (m.parentId) {
         const parent = await db()
