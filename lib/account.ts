@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { DashboardProject } from "./projects";
 import type { Course, Progress } from "./model";
 import { catalogCourse } from "./catalog.ts";
 import { blockingLesson, progressFor } from "./rules.ts";
@@ -90,4 +91,5 @@ export type AccountState = {
   profile: Profile;
   courses: DashboardCourse[];
   sessions: AccountSession[];
+  projects: DashboardProject[];
 };

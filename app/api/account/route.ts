@@ -10,6 +10,7 @@ import {
 } from "@/lib/server";
 import { emptyProfile, profileSchema, dashboardCourse } from "@/lib/account";
 import { classAgenda } from "@/lib/classes";
+import { dashboardProjects } from "@/lib/projects";
 import type { Course } from "@/lib/model";
 export const dynamic = "force-dynamic";
 function failure(e: unknown) {
@@ -71,6 +72,7 @@ export async function GET() {
         : emptyProfile(u.name),
       courses,
       sessions: agenda,
+      projects: await dashboardProjects(db(), u),
     });
   } catch (e) {
     return failure(e);

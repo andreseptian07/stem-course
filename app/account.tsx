@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { AccountState, Profile, DashboardCourse } from "@/lib/account";
 import "./account.css";
+import ProjectSummary from "./project-summary";
 async function request(body?: unknown): Promise<any> {
   const r = await fetch(
     "/api/account",
@@ -323,6 +324,7 @@ export default function Account({
                   <span>Sesi akan datang</span>
                 </div>
               </section>
+              <ProjectSummary projects={data.projects || []} />
               <section className="account-course-section">
                 <div className="account-section-heading">
                   <h2>Course saya</h2>

@@ -253,8 +253,14 @@ test("closing, archiving and membership revocation block new submissions and rev
   await setMembership(d, owner, "class-a", "alice", "approved");
   sql.exec("UPDATE cohorts SET status='archived' WHERE id='class-a'");
   assert.equal((await projectList(d, alice, "class-a")).submissions.length, 1);
-  await assert.rejects(() => reviewProject(d, mentor, review({version:2})), e => e.status === 409);
-  await assert.rejects(() => saveAssignment(d, mentor, {...task(), version:2}), e => e.status === 409);
+  await assert.rejects(
+    () => reviewProject(d, mentor, review({ version: 2 })),
+    (e) => e.status === 409,
+  );
+  await assert.rejects(
+    () => saveAssignment(d, mentor, { ...task(), version: 2 }),
+    (e) => e.status === 409,
+  );
 });
 test("write-time authorization prevents a revoked mentor or student from saving", async () => {
   const f = await fixture();
@@ -317,4 +323,78 @@ test("write-time authorization prevents a revoked mentor or student from saving"
     (await projectList(f.d, f.alice, "class-a")).submissions[0].status,
     "submitted",
   );
+});
+
+test("dashboard includes only joined class projects and the newest personal review without private contents", async () => {
+  const { dashboardProjects } = await import("../lib/projects.ts");
+  const f = await fixture();
+  await saveAssignment(f.d, f.mentor, task());
+  await saveAssignment(f.d, f.mentor, { ...task("draft"), id: "draft-task" });
+  await submitProject(f.d, f.alice, submit());
+  await reviewProject(f.d, f.mentor, review());
+  await submitProject(f.d, f.bob, submit("bob-submission"));
+  let rows = await dashboardProjects(f.d, f.alice, "2026-10-06T00:00:00Z");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].status, "changes_requested");
+  assert.equal(rows[0].score, 60);
+  assert.equal(rows[0].needsWork, true);
+  assert.equal(rows[0].overdue, true);
+  for (const secret of [
+    "body",
+    "url",
+    "instructions",
+    "feedback",
+    "studentId",
+    "reviewerName",
+  ])
+    assert.equal(secret in rows[0], false);
+  assert.equal((await dashboardProjects(f.d, f.bob))[0].status, "submitted");
+  assert.equal((await dashboardProjects(f.d, f.mentor)).length, 0);
+  assert.equal((await dashboardProjects(f.d, f.owner)).length, 0);
+  await submitProject(
+    f.d,
+    f.alice,
+    submit("s-new", { previousId: "s-a", previousVersion: 2 }),
+  );
+  rows = await dashboardProjects(f.d, f.alice);
+  assert.equal(rows[0].attempt, 2);
+  assert.equal(rows[0].score, null);
+  assert.equal(rows[0].status, "submitted");
+  assert.equal(rows[0].overdue, false);
+  await reviewProject(
+    f.d,
+    f.mentor,
+    review({ submissionId: "s-new", status: "accepted", score: 0 }),
+  );
+  rows = await dashboardProjects(f.d, f.alice);
+  assert.equal(rows[0].score, 0);
+  assert.equal(rows[0].status, "accepted");
+  await setMembership(f.d, f.owner, "class-a", "alice", "removed");
+  assert.equal((await dashboardProjects(f.d, f.alice)).length, 0);
+  f.sql.exec("UPDATE cohorts SET status='archived' WHERE id='class-a'");
+  assert.equal((await dashboardProjects(f.d, f.bob)).length, 0);
+});
+test("dashboard orders revisions and deadlines, and does not call closed tasks actionable", async () => {
+  const { dashboardProjects } = await import("../lib/projects.ts");
+  const f = await fixture();
+  await saveAssignment(f.d, f.mentor, {
+    ...task(),
+    id: "work",
+    dueAt: "2030-11-10T00:00:00Z",
+  });
+  await saveAssignment(f.d, f.mentor, {
+    ...task(),
+    id: "earlier",
+    dueAt: "2030-11-01T00:00:00Z",
+  });
+  await saveAssignment(f.d, f.mentor, { ...task(), id: "no-due", dueAt: null });
+  await saveAssignment(f.d, f.mentor, { ...task("closed"), id: "closed" });
+  const rows = await dashboardProjects(f.d, f.alice, "2030-11-01T00:00:00Z");
+  assert.deepEqual(
+    rows.map((r) => r.id),
+    ["earlier", "work", "no-due", "closed"],
+  );
+  assert.equal(rows[0].overdue, false);
+  assert.equal(rows[2].overdue, false);
+  assert.equal(rows[3].needsWork, false);
 });

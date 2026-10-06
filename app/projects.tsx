@@ -92,6 +92,7 @@ export default function Projects({
   }
   useEffect(() => {
     let live = true;
+    setSelected(new URLSearchParams(location.search).get("task") || "");
     api(classId)
       .then((d) => {
         if (live) setData(d);

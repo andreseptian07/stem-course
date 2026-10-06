@@ -225,3 +225,79 @@ export async function reviewProject(d: D1Database, u: ClassUser, raw: unknown) {
     );
   return { ok: true };
 }
+
+export type DashboardProject = {
+  id: string;
+  title: string;
+  classId: string;
+  className: string;
+  courseTitle: string;
+  dueAt: string | null;
+  taskStatus: "published" | "closed";
+  status: "not_submitted" | "submitted" | "changes_requested" | "accepted";
+  attempt: number;
+  submittedAt: string | null;
+  reviewedAt: string | null;
+  score: number | null;
+  late: boolean;
+  overdue: boolean;
+  needsWork: boolean;
+};
+export async function dashboardProjects(
+  d: D1Database,
+  u: ClassUser,
+  at = new Date().toISOString(),
+): Promise<DashboardProject[]> {
+  const rows = (
+    await d
+      .prepare(
+        `SELECT a.id,a.title,a.class_id AS classId,c.name AS className,json_extract(k.data,'$.title') AS courseTitle,a.due_at AS dueAt,a.status AS taskStatus,s.status,s.attempt,s.submitted_at AS submittedAt,s.reviewed_at AS reviewedAt,s.score,s.late
+ FROM cohort_members m JOIN cohorts c ON c.id=m.class_id JOIN courses k ON k.id=c.course_id JOIN class_assignments a ON a.class_id=c.id
+ LEFT JOIN project_submissions s ON s.assignment_id=a.id AND s.student_id=m.user_id AND s.attempt=(SELECT max(attempt) FROM project_submissions WHERE assignment_id=a.id AND student_id=m.user_id)
+ WHERE m.user_id=? AND m.status='approved' AND c.status!='archived' AND a.status!='draft'`,
+      )
+      .bind(u.id)
+      .all<any>()
+  ).results;
+  const result: DashboardProject[] = rows.map((r) => {
+    const status = r.status || "not_submitted";
+    const needsWork =
+      r.taskStatus === "published" &&
+      (status === "not_submitted" || status === "changes_requested");
+    return {
+      id: r.id,
+      title: r.title,
+      classId: r.classId,
+      className: r.className,
+      courseTitle: r.courseTitle,
+      dueAt: r.dueAt,
+      taskStatus: r.taskStatus,
+      status,
+      attempt: r.attempt || 0,
+      submittedAt: r.submittedAt || null,
+      reviewedAt: r.reviewedAt || null,
+      score: r.score ?? null,
+      late: !!r.late,
+      needsWork,
+      overdue: needsWork && !!r.dueAt && Date.parse(r.dueAt) < Date.parse(at),
+    };
+  });
+  return result.sort((a, b) => {
+    const rank = (x: DashboardProject) =>
+      x.needsWork
+        ? x.status === "changes_requested"
+          ? 0
+          : 1
+        : x.status === "submitted"
+          ? 2
+          : x.status === "accepted"
+            ? 3
+            : 4;
+    return (
+      rank(a) - rank(b) ||
+      (a.dueAt || "9999").localeCompare(b.dueAt || "9999") ||
+      a.className.localeCompare(b.className) ||
+      a.id.localeCompare(b.id)
+    );
+  });
+}
