@@ -7,7 +7,8 @@ import { seedCourse, readCourse, courseRows, saveCourse, readProgress, initializ
 import { publicSessions, learningSessions, enrolledSessions, saveSession, setRsvp } from "../lib/session-data.ts";
 import { classAccess, listClasses, classDetail, saveClass, requestJoin, setMembership, addPost, addFeedback, saveClassSession, resetClassAttempts, classAgenda } from "../lib/classes.ts";
 import { saveAssignment, submitProject, reviewProject, projectList, dashboardProjects } from "../lib/projects.ts";
-import { releaseAttempt } from "../lib/code-attempts.ts";
+import { startAttempt, readAttempt, releaseAttempt } from "../lib/code-attempts.ts";
+import { encode } from "../lib/judge.ts";
 
 const status = (expected) => (error) => error.status === expected;
 export async function learningScenarios(t, d) {
@@ -129,6 +130,14 @@ export async function learningScenarios(t, d) {
     assert.equal(Number((await d.prepare("SELECT COUNT(*) AS n FROM cohort_members WHERE class_id='learning-small-class' AND status='approved'").first()).n), 1);
     for (const u of [alice, bob]) await setMembership(d, owner, "learning-class", u.id, "approved");
     assert.equal(Number((await d.prepare("SELECT COUNT(*) AS n FROM enrollments WHERE user_id=? AND course_id=?").bind(winner.id, c.id).first()).n), 1);
+    await assert.rejects(() => saveClass(d, owner, { ...classForm(), version: 1, capacity: 1 }), status(409));
+  });
+  await t.test("enrollment storage failure rolls back membership approval", async () => {
+    await saveClass(d, owner, classForm("learning-rollback-class", 1));
+    await requestJoin(d, other, "learning-rollback-class");
+    const failing = { dialect: d.dialect, prepare(sql) { return d.prepare(sql.includes("INTO enrollments") ? "INSERT INTO deliberately_missing_enrollment(user_id) VALUES(?)" : sql); }, batch(statements) { return d.batch(statements); } };
+    await assert.rejects(() => setMembership(failing, owner, "learning-rollback-class", other.id, "approved"));
+    assert.equal((await d.prepare("SELECT status FROM cohort_members WHERE class_id='learning-rollback-class' AND user_id=?").bind(other.id).first()).status, "pending");
   });
   await t.test("class discussion, private feedback and sessions remain scoped to memberships", async () => {
     await addPost(d, alice, "learning-class", "discussion", "hello");
@@ -191,6 +200,33 @@ export async function learningScenarios(t, d) {
     assert.deepEqual(JSON.parse(row.data), { hash: "safe" });
     assert.ok(row.poll_at > 2147483647);
     assert.equal((await readProgress(d, bob.id, c.id)).find((p) => p.lessonId === "coding").codeAttempts, 0);
+  });
+  await t.test("code submissions reserve quota once, polling leases prevent duplicate calls, and hidden output stays private", async () => {
+    const cfg = { url: "https://judge.example.com", token: "ci-fake-secret", languageIds: { python: 71 } };
+    const l = structuredClone(c.lessons.find((l) => l.id === "coding"));
+    l.exercise.maxAttempts = 1;
+    let submits = 0, polls = 0;
+    // Provider responses are simulated; no network or actual code execution.
+    const fetcher = async (_url, init) => {
+      if (init.method === "POST") {
+        submits++;
+        return Response.json(l.exercise.tests.map((_, i) => ({ token: `learning-token-${i}` })));
+      }
+      polls++;
+      return Response.json({ submissions: l.exercise.tests.map((test, i) => ({ token: `learning-token-${i}`, status: { id: 3 }, stdout: encode(test.hidden ? "do-not-leak-hidden-output" : test.expected) })) });
+    };
+    const id = "learning-code-graded";
+    await startAttempt(d, cfg, bob.id, c.id, l, "print(input())", id, fetcher);
+    await startAttempt(d, cfg, bob.id, c.id, l, "print(input())", id, fetcher);
+    assert.equal(submits, 1);
+    const a = await d.prepare("SELECT * FROM attempts WHERE id=?").bind(id).first();
+    const results = await Promise.all([readAttempt(d, cfg, bob.id, a, l.revision, fetcher), readAttempt(d, cfg, bob.id, a, l.revision, fetcher)]);
+    assert.equal(polls, 1);
+    assert.equal(results.filter((r) => r.state === "finished").length, 1);
+    assert.equal(JSON.stringify(results).includes("do-not-leak-hidden-output"), false);
+    assert.equal((await readProgress(d, bob.id, c.id)).find((p) => p.lessonId === "coding").codePassed, 1);
+    await assert.rejects(() => startAttempt(d, cfg, bob.id, c.id, l, "other source", "learning-code-exhausted", fetcher), status(429));
+    assert.equal(submits, 1);
   });
   await t.test("membership revocation and mentor reassignment remove private access and archived classes are read-only", async () => {
     await setMembership(d, owner, "learning-class", alice.id, "removed");
