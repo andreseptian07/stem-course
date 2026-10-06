@@ -64,11 +64,15 @@ SQL ada di `mariadb/0000_big_captain_marvel.sql`. Jalankan melalui runner agar r
 
 Sudah disiapkan: driver `mysql2`, konfigurasi koneksi Node.js, skema Drizzle MariaDB, SQL migrasi, pengecekan koneksi, pengelolaan migrasi, dan pengujian CI pada database sementara.
 
-**Aplikasi utama masih memakai D1.** Modul `db/mariadb.ts` belum menjadi pengganti `lib/server.ts` atau API peserta. Pengelolaan akses pada `lib/access.ts` sudah memiliki query D1 dan MariaDB, dengan antarmuka bersama pada `lib/database.ts`. Modul MariaDB menyediakan adapter `database` selain pool dan ORM; query dipilih secara eksplisit, bukan diterjemahkan melalui regex saat dijalankan.
+**Aplikasi utama masih memakai D1.** Modul `db/mariadb.ts` belum menjadi pengganti `lib/server.ts` atau API peserta. Query akses akun, course, profil, enrollment, progres/kuis, sesi/RSVP, kelas/mentor, tugas/review, dan percobaan coding sudah memakai antarmuka bersama `lib/database.ts`, dengan varian D1 dan MariaDB. Query bisnis course/akun/sesi dipisahkan ke `lib/course-data.ts`, `lib/account-data.ts`, dan `lib/session-data.ts`, sehingga dapat diuji tanpa runtime Cloudflare. Modul MariaDB menyediakan adapter `database` selain pool dan ORM; query dipilih secara eksplisit, bukan diterjemahkan melalui regex saat dijalankan.
 
 Adapter menggunakan prepared statements, transaksi untuk batch, dan named lock per database untuk mempertahankan serialisasi penulisan D1. Insert duplikat yang tidak mengubah data melaporkan nol, sehingga konflik versi dan audit tetap dapat dikenali. Koneksi dengan kegagalan rollback atau pelepasan lock tidak dikembalikan ke pool. Serialisasi ini merupakan pilihan awal untuk menjaga aturan akses/kuota; skalabilitas penulisan perlu ditinjau sebelum trafik besar.
 
-Port query course/profil/progres/kelas/tugas/coding, autentikasi dan runtime produksi masih diperlukan. Mengisi password saja belum menyelesaikan migrasi platform. Pengujian MariaDB tambahan mencakup persetujuan bersamaan dan rollback audit; hasilnya harus diverifikasi melalui CI, terpisah dari tes unit yang memakai SQLite atau pool palsu.
+Autentikasi dan runtime produksi Node.js masih perlu dipindahkan sebelum API benar-benar memakai MariaDB. Mengisi password saja belum menyelesaikan migrasi platform. Jangan membuat pool baru pada setiap request; runtime Node berikutnya harus mempertahankan satu adapter/pool yang sama.
+
+Pengujian integrasi memakai service MariaDB 10.11 di GitHub Actions. Selain foundation dan akses akun, skenario yang sama dijalankan pada SQLite dan MariaDB untuk memastikan privasi draft, konflik profil, kuota kuis paralel, rollback hasil kuis, revisi progres, kapasitas RSVP/kelas, feedback pribadi, review tugas terbaru, pencabutan keanggotaan, dan pengembalian kuota coding. Kuota kuis dan hasil tersimpan dalam satu transaksi; persetujuan kelas dan enrollment juga satu transaksi.
+
+MariaDB tidak memiliki `rowid`: daftar course diurutkan menurut ID, dan pesan dengan timestamp yang sama memakai ID sebagai penentu urutan. Ini stabil tetapi tidak menjamin urutan pembuatan pada timestamp yang sama. Judul JSON dibaca tanpa kutip pembungkus, nilai `published=false` tetap tersembunyi, dan akhir sesi dihitung dari waktu UTC dengan dukungan pecahan detik. Fitur coding belum diaktifkan dan tes adapter tidak mengeksekusi program peserta pada layanan Judge0 nyata.
 
 Koneksi ke database Hostinger belum diverifikasi karena password diisi manual oleh pengguna. Hasil pengujian CI tidak membuktikan hostname, izin akun, TLS atau jaringan Hostinger sudah benar.
 

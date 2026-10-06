@@ -1,3 +1,4 @@
+import { databaseSql, type PlatformDatabase } from "./database.ts";
 import {
   submitCode,
   pollCode,
@@ -16,15 +17,15 @@ export class CodeError extends Error {
 }
 const active = "state IN ('submitting','pending')";
 export async function releaseAttempt(
-  d: D1Database,
+  d: PlatformDatabase,
   id: string,
   userId: string,
 ) {
-  // D1 batch is transactional: the active state makes a refund happen at most once.
+  // The database batch is transactional: the active state makes a refund happen at most once.
   await d.batch([
     d
       .prepare(
-        `UPDATE progress SET code_attempts=max(0,code_attempts-1) WHERE user_id=? AND EXISTS(SELECT 1 FROM attempts a WHERE a.id=? AND a.user_id=progress.user_id AND a.course_id=progress.course_id AND a.lesson_id=progress.lesson_id AND a.revision=progress.revision AND a.${active})`,
+        `UPDATE progress SET code_attempts=${databaseSql(d, "max(0,code_attempts-1)", "GREATEST(0,code_attempts-1)")} WHERE user_id=? AND EXISTS(SELECT 1 FROM attempts a WHERE a.id=? AND a.user_id=progress.user_id AND a.course_id=progress.course_id AND a.lesson_id=progress.lesson_id AND a.revision=progress.revision AND a.${active})`,
       )
       .bind(userId, id),
     d
@@ -44,7 +45,7 @@ async function digest(s: string) {
     .join("");
 }
 export async function startAttempt(
-  d: D1Database,
+  d: PlatformDatabase,
   cfg: JudgeConfig,
   userId: string,
   courseId: string,
@@ -152,7 +153,7 @@ export async function startAttempt(
   }
 }
 export async function readAttempt(
-  d: D1Database,
+  d: PlatformDatabase,
   cfg: JudgeConfig | null,
   userId: string,
   a: any,

@@ -11,14 +11,14 @@
     "build": "node scripts/run-framework.mjs build",
     "start": "node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js dev --config dist/server/wrangler.json --local --persist-to .wrangler/state --ip 127.0.0.1 --inspector-port 0",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/access.test.mjs tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/mariadb-config.test.mjs tests/mariadb-adapter.test.mjs",
+    "test": "node --experimental-strip-types --test tests/access.test.mjs tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/mariadb-config.test.mjs tests/mariadb-adapter.test.mjs tests/learning-data.test.mjs",
     "check": "npm run typecheck && npm test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:generate:mariadb": "drizzle-kit generate --config drizzle.mariadb.config.ts",
     "db:check": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/mariadb-check.mjs",
     "db:migrate:mariadb": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/mariadb-migrate.mjs",
-    "test:mariadb": "node --experimental-strip-types --test tests/mariadb.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-access.integration.test.mjs"
+    "test:mariadb": "node --experimental-strip-types --test tests/mariadb.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-access.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-learning.integration.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

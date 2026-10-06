@@ -1,4 +1,6 @@
 import { z } from "zod";
+import type { PlatformDatabase } from "./database.ts";
+import { courseTitleSql } from "./database-sql.ts";
 import { classAccess, ClassError, type ClassUser } from "./classes.ts";
 const id = z
   .string()
@@ -70,7 +72,7 @@ export const projectMutation = z.discriminatedUnion("action", [
 const activeStaff = `EXISTS(SELECT 1 FROM cohorts c WHERE c.id=a.class_id AND c.status!='archived' AND (?='owner' OR c.mentor_id=?))`;
 const activeMember = `EXISTS(SELECT 1 FROM cohorts c JOIN cohort_members m ON m.class_id=c.id AND m.user_id=? AND m.status='approved' WHERE c.id=a.class_id AND c.status!='archived')`;
 export async function projectList(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
 ) {
@@ -94,7 +96,7 @@ export async function projectList(
   return { tasks, submissions, staff };
 }
 export async function saveAssignment(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   raw: unknown,
 ) {
@@ -146,7 +148,7 @@ export async function saveAssignment(
     );
   return { id: a.id };
 }
-export async function submitProject(d: D1Database, u: ClassUser, raw: unknown) {
+export async function submitProject(d: PlatformDatabase, u: ClassUser, raw: unknown) {
   const b = projectMutation.parse(raw);
   if (b.action !== "submit") throw new ClassError(400, "Aksi tidak sesuai.");
   const a = await d
@@ -191,7 +193,7 @@ export async function submitProject(d: D1Database, u: ClassUser, raw: unknown) {
     );
   return { id: b.id };
 }
-export async function reviewProject(d: D1Database, u: ClassUser, raw: unknown) {
+export async function reviewProject(d: PlatformDatabase, u: ClassUser, raw: unknown) {
   const b = projectMutation.parse(raw);
   if (b.action !== "review") throw new ClassError(400, "Aksi tidak sesuai.");
   const a = await d
@@ -244,14 +246,14 @@ export type DashboardProject = {
   needsWork: boolean;
 };
 export async function dashboardProjects(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   at = new Date().toISOString(),
 ): Promise<DashboardProject[]> {
   const rows = (
     await d
       .prepare(
-        `SELECT a.id,a.title,a.class_id AS classId,c.name AS className,json_extract(k.data,'$.title') AS courseTitle,a.due_at AS dueAt,a.status AS taskStatus,s.status,s.attempt,s.submitted_at AS submittedAt,s.reviewed_at AS reviewedAt,s.score,s.late
+        `SELECT a.id,a.title,a.class_id AS classId,c.name AS className,${courseTitleSql(d, "k.data")} AS courseTitle,a.due_at AS dueAt,a.status AS taskStatus,s.status,s.attempt,s.submitted_at AS submittedAt,s.reviewed_at AS reviewedAt,s.score,s.late
  FROM cohort_members m JOIN cohorts c ON c.id=m.class_id JOIN courses k ON k.id=c.course_id JOIN class_assignments a ON a.class_id=c.id
  LEFT JOIN project_submissions s ON s.assignment_id=a.id AND s.student_id=m.user_id AND s.attempt=(SELECT max(attempt) FROM project_submissions WHERE assignment_id=a.id AND student_id=m.user_id)
  WHERE m.user_id=? AND m.status='approved' AND c.status!='archived' AND a.status!='draft'`,

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { databaseSql, type PlatformDatabase } from "./database.ts";
+import { courseTitleSql, publishedSql, upcomingSessionSql } from "./database-sql.ts";
 import type { Course, Progress } from "./model";
 import { dashboardCourse } from "./account.ts";
 export type ClassUser = { id: string; name: string; role: string };
@@ -71,14 +73,14 @@ function requireOwner(u: ClassUser) {
     );
 }
 export async function classAccess(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
   mode: "summary" | "member" | "staff" = "member",
 ) {
   const c = await d
     .prepare(
-      `SELECT c.*,json_extract(k.data,'$.title') AS course_title,json_extract(k.data,'$.published') AS published,k.data AS course_data,m.name AS mentor_name FROM cohorts c JOIN courses k ON k.id=c.course_id LEFT JOIN users m ON m.id=c.mentor_id WHERE c.id=?`,
+      `SELECT c.*,${courseTitleSql(d, "k.data")} AS course_title,${publishedSql(d, "k.data")} AS published,k.data AS course_data,m.name AS mentor_name FROM cohorts c JOIN courses k ON k.id=c.course_id LEFT JOIN users m ON m.id=c.mentor_id WHERE c.id=?`,
     )
     .bind(classId)
     .first<any>();
@@ -127,10 +129,10 @@ function summary(c: any, u: ClassUser) {
     published: !!c.published,
   };
 }
-export async function listClasses(d: D1Database, u: ClassUser) {
+export async function listClasses(d: PlatformDatabase, u: ClassUser) {
   const rows = await d
     .prepare(
-      `SELECT c.*,json_extract(k.data,'$.title') AS course_title,json_extract(k.data,'$.published') AS published,m.name AS mentor_name,cm.status AS membership,(SELECT count(*) FROM cohort_members WHERE class_id=c.id AND status='approved') AS count FROM cohorts c JOIN courses k ON k.id=c.course_id LEFT JOIN users m ON m.id=c.mentor_id LEFT JOIN cohort_members cm ON cm.class_id=c.id AND cm.user_id=? WHERE ?='owner' OR c.mentor_id=? OR cm.status='approved' OR (c.status='open' AND json_extract(k.data,'$.published')=1) ORDER BY c.created_at DESC`,
+      `SELECT c.*,${courseTitleSql(d, "k.data")} AS course_title,${publishedSql(d, "k.data")} AS published,m.name AS mentor_name,cm.status AS membership,(SELECT count(*) FROM cohort_members WHERE class_id=c.id AND status='approved') AS count FROM cohorts c JOIN courses k ON k.id=c.course_id LEFT JOIN users m ON m.id=c.mentor_id LEFT JOIN cohort_members cm ON cm.class_id=c.id AND cm.user_id=? WHERE ?='owner' OR c.mentor_id=? OR cm.status='approved' OR (c.status='open' AND ${publishedSql(d, "k.data")}) ORDER BY c.created_at DESC`,
     )
     .bind(u.id, u.role, u.id)
     .all<any>();
@@ -149,7 +151,7 @@ export async function listClasses(d: D1Database, u: ClassUser) {
     data.courses = (
       await d
         .prepare(
-          "SELECT id,json_extract(data,'$.title') AS title,json_extract(data,'$.published') AS published FROM courses ORDER BY rowid",
+          `SELECT id,${courseTitleSql(d, "data")} AS title,${publishedSql(d, "data")} AS published FROM courses ORDER BY ${databaseSql(d, "rowid", "id")}`,
         )
         .all()
     ).results;
@@ -157,7 +159,7 @@ export async function listClasses(d: D1Database, u: ClassUser) {
   return data;
 }
 export async function classDetail(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
 ) {
@@ -179,7 +181,9 @@ export async function classDetail(
   detail.posts = (
     await d
       .prepare(
-        "SELECT id,name,role,kind,body,created_at AS createdAt FROM (SELECT rowid AS sequence,* FROM cohort_posts WHERE class_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100) ORDER BY created_at,sequence",
+        databaseSql(d,
+          "SELECT id,name,role,kind,body,created_at AS createdAt FROM (SELECT rowid AS sequence,* FROM cohort_posts WHERE class_id=? ORDER BY created_at DESC,rowid DESC LIMIT 100) ORDER BY created_at,sequence",
+          "SELECT id,name,role,kind,body,created_at AS createdAt FROM (SELECT * FROM cohort_posts WHERE class_id=? ORDER BY created_at DESC,id DESC LIMIT 100) AS recent ORDER BY created_at,id"),
       )
       .bind(classId)
       .all()
@@ -249,7 +253,7 @@ export async function classDetail(
   }
   return detail;
 }
-export async function saveClass(d: D1Database, u: ClassUser, form: unknown) {
+export async function saveClass(d: PlatformDatabase, u: ClassUser, form: unknown) {
   requireOwner(u);
   const c = classSchema.parse(form);
   const course = await d
@@ -329,7 +333,7 @@ export async function saveClass(d: D1Database, u: ClassUser, form: unknown) {
   return { id: c.id };
 }
 export async function requestJoin(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
 ) {
@@ -344,16 +348,16 @@ export async function requestJoin(
   if (prior) return { ok: true };
   const joined = await d
     .prepare(
-      "INSERT OR IGNORE INTO cohort_members(class_id,user_id,status,created_at) SELECT ?,?,'pending',? WHERE EXISTS(SELECT 1 FROM cohorts c JOIN courses k ON k.id=c.course_id WHERE c.id=? AND c.status='open' AND json_extract(k.data,'$.published')=1 AND (SELECT count(*) FROM cohort_members WHERE class_id=c.id AND status='approved')<c.capacity)",
+      `${databaseSql(d, "INSERT OR IGNORE", "INSERT")} INTO cohort_members(class_id,user_id,status,created_at) SELECT ?,?,'pending',? WHERE EXISTS(SELECT 1 FROM cohorts c JOIN courses k ON k.id=c.course_id WHERE c.id=? AND c.status='open' AND ${publishedSql(d, "k.data")} AND (SELECT count(*) FROM cohort_members WHERE class_id=c.id AND status='approved')<c.capacity) ${databaseSql(d, "", "ON DUPLICATE KEY UPDATE user_id=user_id")}`,
     )
     .bind(classId, u.id, now(), classId)
     .run();
-  if (!joined.meta.changes)
+  if (!joined.meta.changes && !(await d.prepare("SELECT status FROM cohort_members WHERE class_id=? AND user_id=?").bind(classId, u.id).first()))
     throw new ClassError(409, "Kelas penuh atau pendaftaran sudah ditutup.");
   return { ok: true };
 }
 export async function setMembership(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
   userId: string,
@@ -378,19 +382,18 @@ export async function setMembership(
     throw new ClassError(404, "Akun peserta tidak ditemukan.");
   if (status === "approved") {
     // Atomic capacity check on the insertion; approved retries do not occupy a second seat.
-    const r = await d
-      .prepare(
-        `INSERT INTO cohort_members(class_id,user_id,status,created_at) SELECT ?,?,'approved',? WHERE EXISTS(SELECT 1 FROM cohorts WHERE id=? AND status!='archived' AND ((SELECT count(*) FROM cohort_members WHERE class_id=? AND status='approved')<capacity OR EXISTS(SELECT 1 FROM cohort_members WHERE class_id=? AND user_id=? AND status='approved'))) ON CONFLICT(class_id,user_id) DO UPDATE SET status='approved'`,
-      )
-      .bind(classId, userId, now(), classId, classId, classId, userId)
-      .run();
-    if (!r.meta.changes) throw new ClassError(409, "Kelas sudah penuh.");
-    await d
-      .prepare(
-        "INSERT OR IGNORE INTO enrollments(user_id,course_id,created_at) VALUES(?,?,?)",
-      )
-      .bind(userId, c.course_id, now())
-      .run();
+    await d.batch([
+      d.prepare(
+        `INSERT INTO cohort_members(class_id,user_id,status,created_at) SELECT ?,?,'approved',? WHERE EXISTS(SELECT 1 FROM cohorts WHERE id=? AND status!='archived' AND ((SELECT count(*) FROM cohort_members WHERE class_id=? AND status='approved')<capacity OR EXISTS(SELECT 1 FROM cohort_members WHERE class_id=? AND user_id=? AND status='approved'))) ${databaseSql(d, "ON CONFLICT(class_id,user_id) DO UPDATE SET status='approved'", "ON DUPLICATE KEY UPDATE status='approved'")}`,
+      ).bind(classId, userId, now(), classId, classId, classId, userId),
+      d.prepare(
+        `${databaseSql(d, "INSERT OR IGNORE", "INSERT")} INTO enrollments(user_id,course_id,created_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM cohort_members m JOIN cohorts c ON c.id=m.class_id WHERE m.class_id=? AND m.user_id=? AND m.status='approved' AND c.status!='archived') ${databaseSql(d, "", "ON DUPLICATE KEY UPDATE user_id=user_id")}`,
+      ).bind(userId, c.course_id, now(), classId, userId),
+    ]);
+    // MariaDB reports zero for an already approved member. Verify the state so
+    // retries remain idempotent without treating a full class as approved.
+    if (!(await d.prepare("SELECT 1 FROM cohort_members m JOIN cohorts c ON c.id=m.class_id WHERE m.class_id=? AND m.user_id=? AND m.status='approved' AND c.status!='archived'")
+      .bind(classId, userId).first())) throw new ClassError(409, "Kelas sudah penuh.");
   } else {
     const r = await d
       .prepare(
@@ -398,13 +401,14 @@ export async function setMembership(
       )
       .bind(status, classId, userId, classId)
       .run();
-    if (!r.meta.changes)
+    if (!r.meta.changes && !(await d.prepare("SELECT 1 FROM cohort_members WHERE class_id=? AND user_id=? AND status=? AND EXISTS(SELECT 1 FROM cohorts WHERE id=? AND status!='archived')")
+      .bind(classId, userId, status, classId).first()))
       throw new ClassError(404, "Keanggotaan tidak ditemukan.");
   }
   return { ok: true };
 }
 export async function addPost(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
   kind: "discussion" | "announcement",
@@ -447,7 +451,7 @@ export async function addPost(
   return { id };
 }
 export async function addFeedback(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
   studentId: string,
@@ -495,7 +499,7 @@ export async function addFeedback(
   return { id };
 }
 export async function saveClassSession(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   form: unknown,
 ) {
@@ -564,7 +568,7 @@ export async function saveClassSession(
   return { id: s.id };
 }
 export async function resetClassAttempts(
-  d: D1Database,
+  d: PlatformDatabase,
   u: ClassUser,
   classId: string,
   studentId: string,
@@ -585,11 +589,8 @@ export async function resetClassAttempts(
     (l) => l.id === lessonId,
   );
   if (!lesson) throw new ClassError(404, "Materi tidak ditemukan.");
-  const r = await d
-    .prepare(
-      `UPDATE progress SET quiz_attempts=0,code_attempts=0 WHERE user_id=? AND course_id=? AND lesson_id=? AND revision=? AND NOT EXISTS(SELECT 1 FROM attempts WHERE user_id=? AND course_id=? AND lesson_id=? AND kind='code' AND state IN ('pending','submitting')) AND EXISTS(SELECT 1 FROM cohorts WHERE id=? AND status!='archived' AND (?='owner' OR mentor_id=?)) AND EXISTS(SELECT 1 FROM cohort_members WHERE class_id=? AND user_id=? AND status='approved')`,
-    )
-    .bind(
+  const eligible = "user_id=? AND course_id=? AND lesson_id=? AND revision=? AND NOT EXISTS(SELECT 1 FROM attempts WHERE user_id=? AND course_id=? AND lesson_id=? AND kind='code' AND state IN ('pending','submitting')) AND EXISTS(SELECT 1 FROM cohorts WHERE id=? AND status!='archived' AND (?='owner' OR mentor_id=?)) AND EXISTS(SELECT 1 FROM cohort_members WHERE class_id=? AND user_id=? AND status='approved')";
+  const values = [
       studentId,
       c.course_id,
       lessonId,
@@ -602,9 +603,9 @@ export async function resetClassAttempts(
       u.id,
       classId,
       studentId,
-    )
-    .run();
-  if (!r.meta.changes)
+    ];
+  const r = await d.prepare(`UPDATE progress SET quiz_attempts=0,code_attempts=0 WHERE ${eligible}`).bind(...values).run();
+  if (!r.meta.changes && !(await d.prepare(`SELECT 1 FROM progress WHERE ${eligible}`).bind(...values).first()))
     throw new ClassError(
       409,
       "Belum ada progres revisi saat ini atau pemeriksaan kode masih berjalan.",
@@ -651,11 +652,11 @@ export const mutationSchema = z.discriminatedUnion("action", [
     .strict(),
 ]);
 
-export async function classAgenda(d: D1Database, u: ClassUser) {
+export async function classAgenda(d: PlatformDatabase, u: ClassUser) {
   return (
     await d
       .prepare(
-        `SELECT 'class-session:' || s.id AS id,c.course_id AS courseId,json_extract(k.data,'$.title') AS courseTitle,c.id AS classId,c.name AS className,s.title,s.kind,s.starts_at AS startsAt,s.duration,s.location,s.url FROM cohort_sessions s JOIN cohorts c ON c.id=s.class_id JOIN courses k ON k.id=c.course_id WHERE c.status!='archived' AND (c.mentor_id=? OR EXISTS(SELECT 1 FROM cohort_members m WHERE m.class_id=c.id AND m.user_id=? AND m.status='approved')) AND datetime(s.starts_at,'+' || s.duration || ' minutes')>datetime(?) ORDER BY s.starts_at`,
+        `SELECT ${databaseSql(d, "'class-session:' || s.id", "CONCAT('class-session:',s.id)")} AS id,c.course_id AS courseId,${courseTitleSql(d, "k.data")} AS courseTitle,c.id AS classId,c.name AS className,s.title,s.kind,s.starts_at AS startsAt,s.duration,s.location,s.url FROM cohort_sessions s JOIN cohorts c ON c.id=s.class_id JOIN courses k ON k.id=c.course_id WHERE c.status!='archived' AND (c.mentor_id=? OR EXISTS(SELECT 1 FROM cohort_members m WHERE m.class_id=c.id AND m.user_id=? AND m.status='approved')) AND ${upcomingSessionSql(d)} ORDER BY s.starts_at`,
       )
       .bind(u.id, u.id, new Date().toISOString())
       .all()

@@ -1,0 +1,208 @@
+import assert from "node:assert/strict";
+import { sampleCourse } from "../lib/seed.ts";
+import { emptyProfile } from "../lib/account.ts";
+import { catalogCourse } from "../lib/catalog.ts";
+import { accountData, enrollCourse, saveProfile } from "../lib/account-data.ts";
+import { seedCourse, readCourse, courseRows, saveCourse, readProgress, initializeProgress, accessibleLesson, completeLesson, submitQuiz } from "../lib/course-data.ts";
+import { publicSessions, learningSessions, enrolledSessions, saveSession, setRsvp } from "../lib/session-data.ts";
+import { classAccess, listClasses, classDetail, saveClass, requestJoin, setMembership, addPost, addFeedback, saveClassSession, resetClassAttempts, classAgenda } from "../lib/classes.ts";
+import { saveAssignment, submitProject, reviewProject, projectList, dashboardProjects } from "../lib/projects.ts";
+import { releaseAttempt } from "../lib/code-attempts.ts";
+
+const status = (expected) => (error) => error.status === expected;
+export async function learningScenarios(t, d) {
+  const users = Object.fromEntries(["owner", "mentor", "other", "alice", "bob"].map((name) => [name, { id: `learning-${name}`, name, role: name === "owner" ? "owner" : "student" }]));
+  const { owner, mentor, other, alice, bob } = users;
+  for (const u of Object.values(users)) {
+    await d.prepare("INSERT INTO users(id,name,role) VALUES(?,?,?)").bind(u.id, u.name, u.role).run();
+    await d.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'active',1,?,?)").bind(u.id, new Date().toISOString(), new Date().toISOString()).run();
+  }
+  const initial = { ...structuredClone(sampleCourse), id: "learning-course", title: 'STEM "Sensor" 🌱', version: 0 };
+  initial.lessons.find((l) => l.id === "sensor").quiz.maxAttempts = 2;
+  let c, draft;
+  const classForm = (id = "learning-class", capacity = 2) => ({ id, version: 0, courseId: initial.id, mentorId: mentor.id, name: "Kelas STEM", description: "Belajar", startsAt: null, endsAt: null, capacity, status: "open" });
+  await t.test("course creation, owner-only editing, draft privacy and catalog filtering", async () => {
+    await assert.rejects(() => saveCourse(d, alice, initial), status(403));
+    c = await saveCourse(d, owner, initial);
+    draft = await saveCourse(d, owner, { ...initial, id: "learning-draft", published: false });
+    await assert.rejects(() => readCourse(d, draft.id, alice), status(404));
+    const published = await courseRows(d, true);
+    assert.equal(published.some((r) => JSON.parse(r.data).id === draft.id), false);
+    const catalog = catalogCourse(c);
+    assert.equal(JSON.stringify(catalog).includes('"correct"'), false);
+    await seedCourse(d, { ...c, title: "must not overwrite" });
+    assert.equal((await readCourse(d, c.id, alice)).title, c.title);
+    await assert.rejects(() => saveCourse(d, owner, initial), status(409));
+  });
+  await t.test("concurrent profile creation has one winner; version conflicts preserve private profiles", async () => {
+    const outcomes = await Promise.allSettled([saveProfile(d, alice.id, emptyProfile("Alice 🌱")), saveProfile(d, alice.id, emptyProfile("Competing"))]);
+    assert.equal(outcomes.filter((r) => r.status === "fulfilled").length, 1);
+    assert.equal(outcomes.find((r) => r.status === "rejected").reason.status, 409);
+    await assert.rejects(() => saveProfile(d, alice.id, emptyProfile("stale")), status(409));
+    assert.equal((await accountData(d, bob)).profile.version, 0);
+    await enrollCourse(d, alice, c.id);
+    await enrollCourse(d, alice, c.id);
+    await assert.rejects(() => enrollCourse(d, alice, draft.id), status(404));
+    assert.equal((await accountData(d, alice)).courses.filter((x) => x.id === c.id).length, 1);
+  });
+  await t.test("required quiz gates lessons, pass survives review failure, exhausted quota retains no extra attempt", async () => {
+    await assert.rejects(() => accessibleLesson(d, alice, c.id, "coding"), status(403));
+    await assert.rejects(() => completeLesson(d, alice, c.id, "sensor"), status(403));
+    const passed = await submitQuiz(d, alice, c.id, "sensor", { q2: [0, 1], q3: [1] });
+    assert.equal(passed.passed, true);
+    assert.equal((await submitQuiz(d, alice, c.id, "sensor", {})).passed, false);
+    await assert.rejects(() => submitQuiz(d, alice, c.id, "sensor", {}), status(429));
+    let progress = (await readProgress(d, alice.id, c.id)).find((p) => p.lessonId === "sensor");
+    assert.equal(progress.quizPassed, 1);
+    assert.equal(progress.quizAttempts, 2);
+    await completeLesson(d, alice, c.id, "sensor");
+    await completeLesson(d, alice, c.id, "sensor");
+    assert.equal((await accessibleLesson(d, alice, c.id, "coding")).l.id, "coding");
+    await initializeProgress(d, alice.id, c.id, "sensor", 1);
+    progress = (await readProgress(d, alice.id, c.id)).find((p) => p.lessonId === "sensor");
+    assert.equal(progress.complete, 1);
+    assert.equal(progress.quizAttempts, 2);
+    const retained = await d.prepare("SELECT COUNT(*) AS n FROM attempts WHERE user_id=? AND course_id=? AND lesson_id='sensor'").bind(alice.id, c.id).first();
+    assert.equal(Number(retained.n), 2);
+  });
+  await t.test("parallel quizzes respect attempt limits and result failures roll back quota", async () => {
+    const results = await Promise.allSettled(Array.from({ length: 3 }, () => submitQuiz(d, bob, c.id, "sensor", {})));
+    assert.equal(results.filter((r) => r.status === "fulfilled").length, 2);
+    assert.equal(results.find((r) => r.status === "rejected").reason.status, 429);
+    const failing = { ...d, dialect: d.dialect, prepare(sql) { return d.prepare(sql.startsWith("UPDATE progress SET quiz_passed=") ? "UPDATE deliberately_missing_progress SET score=? WHERE id=?" : sql); }, batch(statements) { return d.batch(statements); } };
+    await assert.rejects(() => submitQuiz(failing, other, c.id, "sensor", {}));
+    const p = (await readProgress(d, other.id, c.id)).find((p) => p.lessonId === "sensor");
+    assert.equal(p.quizAttempts, 0);
+    assert.equal(Number((await d.prepare("SELECT COUNT(*) AS n FROM attempts WHERE user_id=?").bind(other.id).first()).n), 0);
+  });
+  await t.test("only changed lessons increment revisions; stale passes cannot unlock updated material", async () => {
+    const next = structuredClone(c);
+    next.lessons.find((l) => l.id === "sensor").blocks[0].content += " diperbarui";
+    c = await saveCourse(d, owner, next);
+    assert.equal(c.lessons.find((l) => l.id === "sensor").revision, 2);
+    assert.equal(c.lessons.find((l) => l.id === "embedded").revision, 1);
+    await assert.rejects(() => accessibleLesson(d, alice, c.id, "coding"), status(403));
+    await initializeProgress(d, alice.id, c.id, "sensor", 2);
+    const p = (await readProgress(d, alice.id, c.id)).find((p) => p.lessonId === "sensor");
+    for (const key of ["complete", "quizPassed", "codePassed", "quizAttempts", "codeAttempts", "score"]) assert.equal(p[key], 0);
+    assert.equal(p.revision, 2);
+  });
+  await t.test("sessions keep meeting URLs private; concurrent RSVPs honor live capacity and retries", async () => {
+    await saveSession(d, owner, { id: "learning-live", courseId: c.id, title: "Live", kind: "online", startsAt: "2099-01-01T00:00:00Z", duration: 60, location: "", url: "https://example.com/private-live", capacity: 1 });
+    await saveSession(d, owner, { id: "learning-draft-live", courseId: draft.id, title: "Draft", kind: "online", startsAt: "2099-01-01T00:00:00.123Z", duration: 60, location: "", url: "https://example.com/draft-secret", capacity: 1 });
+    const publicList = await publicSessions(d);
+    assert.equal(publicList.some((s) => s.id === "learning-draft-live"), false);
+    assert.equal(JSON.stringify(publicList).includes("private-live"), false);
+    assert.equal((await learningSessions(d, alice)).find((s) => s.id === "learning-live").url, "");
+    const outcomes = await Promise.allSettled([setRsvp(d, alice, "learning-live", true), setRsvp(d, bob, "learning-live", true)]);
+    assert.equal(outcomes.filter((r) => r.status === "fulfilled").length, 1);
+    const winner = outcomes[0].status === "fulfilled" ? alice : bob;
+    const loser = winner === alice ? bob : alice;
+    await setRsvp(d, winner, "learning-live", true);
+    assert.equal((await enrolledSessions(d, winner, "2099-01-01T00:30:00.500Z")).some((s) => s.id === "learning-live"), true);
+    assert.equal((await enrolledSessions(d, winner, "2099-01-01T01:00:00.000Z")).length, 0);
+    assert.equal((await enrolledSessions(d, loser)).length, 0);
+    await setRsvp(d, winner, "learning-live", false);
+    await setRsvp(d, loser, "learning-live", true);
+  });
+  await t.test("class listings unquote titles and draft boolean false stays hidden", async () => {
+    await saveClass(d, owner, { ...classForm("learning-draft-class"), courseId: draft.id });
+    await assert.rejects(() => classAccess(d, alice, "learning-draft-class", "summary"), status(404));
+    await assert.rejects(() => requestJoin(d, alice, "learning-draft-class"), status(404));
+    await saveClass(d, owner, classForm());
+    const listing = await listClasses(d, alice);
+    assert.equal(listing.classes.find((x) => x.id === "learning-class").courseTitle, c.title);
+    assert.equal(listing.classes.some((x) => x.id === "learning-draft-class"), false);
+    const admin = await listClasses(d, owner);
+    assert.equal(Number(admin.courses.find((x) => x.id === draft.id).published), 0);
+    assert.equal(admin.classes.find((x) => x.id === "learning-draft-class").published, false);
+  });
+  await t.test("competing approvals cannot exceed capacity and retries retain one enrollment", async () => {
+    await saveClass(d, owner, classForm("learning-small-class", 1));
+    await requestJoin(d, alice, "learning-small-class");
+    await requestJoin(d, alice, "learning-small-class");
+    await requestJoin(d, bob, "learning-small-class");
+    const outcomes = await Promise.allSettled([setMembership(d, owner, "learning-small-class", alice.id, "approved"), setMembership(d, owner, "learning-small-class", bob.id, "approved")]);
+    assert.equal(outcomes.filter((r) => r.status === "fulfilled").length, 1);
+    const winner = outcomes[0].status === "fulfilled" ? alice : bob;
+    await setMembership(d, owner, "learning-small-class", winner.id, "approved");
+    assert.equal(Number((await d.prepare("SELECT COUNT(*) AS n FROM cohort_members WHERE class_id='learning-small-class' AND status='approved'").first()).n), 1);
+    for (const u of [alice, bob]) await setMembership(d, owner, "learning-class", u.id, "approved");
+    assert.equal(Number((await d.prepare("SELECT COUNT(*) AS n FROM enrollments WHERE user_id=? AND course_id=?").bind(winner.id, c.id).first()).n), 1);
+  });
+  await t.test("class discussion, private feedback and sessions remain scoped to memberships", async () => {
+    await addPost(d, alice, "learning-class", "discussion", "hello");
+    await addPost(d, mentor, "learning-class", "announcement", "welcome");
+    await addFeedback(d, mentor, "learning-class", alice.id, "alice-private");
+    await addFeedback(d, mentor, "learning-class", bob.id, "bob-private");
+    await saveClassSession(d, mentor, { id: "learning-class-live", version: 0, classId: "learning-class", title: "Mentoring", kind: "online", startsAt: "2099-01-01T00:00:00.123Z", duration: 60, location: "", url: "https://example.com/private-class" });
+    const detail = await classDetail(d, alice, "learning-class");
+    assert.equal(detail.posts.length, 2);
+    assert.equal(detail.feedback.length, 1);
+    assert.equal(detail.feedback[0].body, "alice-private");
+    assert.equal("members" in detail, false);
+    assert.equal((await classAgenda(d, alice)).find((s) => s.classId === "learning-class").id, "class-session:learning-class-live");
+    await assert.rejects(() => addFeedback(d, other, "learning-class", alice.id, "forbidden"), status(403));
+    await d.prepare("UPDATE progress SET quiz_attempts=3 WHERE user_id=? AND course_id=? AND lesson_id='sensor'").bind(alice.id, c.id).run();
+    await resetClassAttempts(d, mentor, "learning-class", alice.id, "sensor");
+    await resetClassAttempts(d, mentor, "learning-class", alice.id, "sensor");
+    assert.equal((await classDetail(d, mentor, "learning-class")).members.find((m) => m.userId === alice.id).lessons.find((l) => l.id === "sensor").quizAttempts, 0);
+  });
+  const assignment = { id: "learning-task", classId: "learning-class", version: 0, title: "Praktikum", instructions: "Instruksi awal", dueAt: "2020-01-01T00:00:00Z", status: "published" };
+  const submission = { action: "submit", id: "learning-attempt-1", assignmentId: assignment.id, assignmentVersion: 1, previousId: null, previousVersion: 0, body: "Pekerjaan Alice", url: "https://example.com/alice" };
+  await t.test("project snapshots and late submissions persist; students cannot read another student's work", async () => {
+    await saveAssignment(d, mentor, assignment);
+    await saveAssignment(d, mentor, { ...assignment, id: "learning-task-draft", status: "draft" });
+    await submitProject(d, alice, submission);
+    const list = await projectList(d, alice, "learning-class");
+    assert.equal(list.tasks.some((x) => x.id === "learning-task-draft"), false);
+    assert.equal(Number(list.submissions[0].late), 1);
+    assert.equal(list.submissions[0].instructions, "Instruksi awal");
+    assert.equal((await projectList(d, bob, "learning-class")).submissions.length, 0);
+    assert.equal((await dashboardProjects(d, alice)).find((x) => x.id === assignment.id).courseTitle, c.title);
+    await assert.rejects(() => submitProject(d, alice, { ...submission, id: "learning-duplicate" }), status(409));
+    await saveAssignment(d, mentor, { ...assignment, version: 1, instructions: "Instruksi revisi" });
+    assert.equal((await projectList(d, alice, "learning-class")).submissions[0].instructions, "Instruksi awal");
+    await assert.rejects(() => saveAssignment(d, mentor, { ...assignment, version: 2, status: "draft" }), status(409));
+  });
+  await t.test("review version conflicts and latest-only guards protect resubmissions", async () => {
+    const review = { action: "review", submissionId: submission.id, version: 1, status: "changes_requested", feedback: "Perbaiki", score: 30 };
+    const outcomes = await Promise.allSettled([reviewProject(d, mentor, review), reviewProject(d, mentor, review)]);
+    assert.equal(outcomes.filter((r) => r.status === "fulfilled").length, 1);
+    assert.equal(outcomes.find((r) => r.status === "rejected").reason.status, 409);
+    await submitProject(d, alice, { ...submission, id: "learning-attempt-2", assignmentVersion: 2, previousId: submission.id, previousVersion: 2 });
+    await assert.rejects(() => reviewProject(d, mentor, { ...review, version: 2, status: "accepted" }), status(409));
+    await reviewProject(d, mentor, { ...review, submissionId: "learning-attempt-2", status: "accepted", score: 100 });
+    const item = (await dashboardProjects(d, alice)).find((x) => x.id === assignment.id);
+    assert.equal(item.status, "accepted");
+    assert.equal(item.attempt, 2);
+    assert.equal("body" in item, false);
+    assert.equal("feedback" in item, false);
+  });
+  await t.test("code failure refunds once and erases tokens, hidden tests and endpoint data", async () => {
+    await initializeProgress(d, bob.id, c.id, "coding", 1);
+    await d.prepare("UPDATE progress SET code_attempts=1 WHERE user_id=? AND course_id=? AND lesson_id='coding'").bind(bob.id, c.id).run();
+    await d.prepare("INSERT INTO attempts(id,user_id,course_id,lesson_id,revision,kind,state,data,created_at,poll_at) VALUES(?,?,?,'coding',1,'code','pending',?,?,?)")
+      .bind("learning-code", bob.id, c.id, JSON.stringify({ tokens: ["secret"], hidden: [true], endpoint: "secret", hash: "safe" }), new Date().toISOString(), Date.now() + 16000).run();
+    await releaseAttempt(d, "learning-code", bob.id);
+    await releaseAttempt(d, "learning-code", bob.id);
+    const row = await d.prepare("SELECT state,data,poll_at FROM attempts WHERE id='learning-code'").first();
+    assert.equal(row.state, "error");
+    assert.deepEqual(JSON.parse(row.data), { hash: "safe" });
+    assert.ok(row.poll_at > 2147483647);
+    assert.equal((await readProgress(d, bob.id, c.id)).find((p) => p.lessonId === "coding").codeAttempts, 0);
+  });
+  await t.test("membership revocation and mentor reassignment remove private access and archived classes are read-only", async () => {
+    await setMembership(d, owner, "learning-class", alice.id, "removed");
+    await setMembership(d, owner, "learning-class", alice.id, "removed");
+    assert.equal("posts" in await classDetail(d, alice, "learning-class"), false);
+    assert.equal((await dashboardProjects(d, alice)).length, 0);
+    assert.equal((await classAgenda(d, alice)).length, 0);
+    await assert.rejects(() => submitProject(d, alice, { ...submission, id: "learning-removed" }), status(403));
+    await saveClass(d, owner, { ...classForm(), version: 1, mentorId: other.id });
+    await assert.rejects(() => reviewProject(d, mentor, { action: "review", submissionId: "learning-attempt-2", version: 2, status: "accepted", feedback: "No", score: 0 }), status(403));
+    await saveClass(d, owner, { ...classForm(), version: 2, mentorId: other.id, status: "archived" });
+    await assert.rejects(() => addPost(d, other, "learning-class", "announcement", "closed"), status(409));
+    assert.equal((await classAgenda(d, bob)).length, 0);
+  });
+}

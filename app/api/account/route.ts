@@ -1,17 +1,7 @@
 import { z } from "zod";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
-import {
-  db,
-  identity,
-  course,
-  getProgress,
-  json,
-  AppError,
-} from "@/lib/server";
-import { emptyProfile, profileSchema, dashboardCourse } from "@/lib/account";
-import { classAgenda } from "@/lib/classes";
-import { dashboardProjects } from "@/lib/projects";
-import type { Course } from "@/lib/model";
+import { db, identity, json, AppError } from "@/lib/server";
+import { accountData, enrollCourse, saveProfile } from "@/lib/account-data";
 export const dynamic = "force-dynamic";
 function failure(e: unknown) {
   if (e instanceof AppError) return json({ error: e.message }, e.status);
@@ -33,47 +23,7 @@ export async function GET() {
   try {
     const u = await identity();
     const signed = await getChatGPTUser();
-    const p = await db()
-      .prepare("SELECT data,version FROM profiles WHERE user_id=?")
-      .bind(u.id)
-      .first<{ data: string; version: number }>();
-    const rows = (
-      await db()
-        .prepare(
-          "SELECT c.data,c.version,e.created_at AS enrolledAt FROM courses c LEFT JOIN enrollments e ON e.course_id=c.id AND e.user_id=? WHERE (json_extract(c.data,'$.published')=1 OR ?='owner') AND (e.user_id IS NOT NULL OR EXISTS(SELECT 1 FROM progress p WHERE p.course_id=c.id AND p.user_id=?)) ORDER BY e.created_at DESC,c.rowid",
-        )
-        .bind(u.id, u.role, u.id)
-        .all<{ data: string; version: number; enrolledAt: string | null }>()
-    ).results;
-    const courses = await Promise.all(
-      rows.map(async (r) =>
-        dashboardCourse(
-          { ...JSON.parse(r.data), version: r.version } as Course,
-          await getProgress(u.id, JSON.parse(r.data).id),
-          r.enrolledAt,
-        ),
-      ),
-    );
-    const sessions = (
-      await db()
-        .prepare(
-          "SELECT s.id,s.course_id AS courseId,json_extract(c.data,'$.title') AS courseTitle,s.title,s.kind,s.starts_at AS startsAt,s.duration,s.location,s.url FROM rsvps r JOIN sessions s ON s.id=r.session_id JOIN courses c ON c.id=s.course_id WHERE r.user_id=? AND (json_extract(c.data,'$.published')=1 OR ?='owner') AND datetime(s.starts_at,'+' || s.duration || ' minutes')>datetime(?) ORDER BY s.starts_at",
-        )
-        .bind(u.id, u.role, new Date().toISOString())
-        .all()
-    ).results;
-    const agenda = [...sessions, ...(await classAgenda(db(), u))].sort(
-      (a: any, b: any) => a.startsAt.localeCompare(b.startsAt),
-    );
-    return json({
-      user: { ...u, email: signed!.email },
-      profile: p
-        ? { ...JSON.parse(p.data), version: p.version }
-        : emptyProfile(u.name),
-      courses,
-      sessions: agenda,
-      projects: await dashboardProjects(db(), u),
-    });
+    return json({ user: { ...u, email: signed!.email }, ...await accountData(db(), u) });
   } catch (e) {
     return failure(e);
   }
@@ -97,59 +47,9 @@ export async function POST(req: Request) {
     const u = await identity();
     if (b.action === "enroll") {
       const id = z.string().min(1).max(80).parse(b.courseId);
-      const c = await course(id, u);
-      if (!c.published) throw new AppError(400, "Course belum diterbitkan.");
-      await db()
-        .prepare(
-          "INSERT OR IGNORE INTO enrollments(user_id,course_id,created_at) VALUES(?,?,?)",
-        )
-        .bind(u.id, id, new Date().toISOString())
-        .run();
-      return json({ courseId: id });
+      return json(await enrollCourse(db(), u, id));
     }
-    if (b.action === "saveProfile") {
-      const p = profileSchema.parse(b.profile);
-      const old = await db()
-        .prepare("SELECT version FROM profiles WHERE user_id=?")
-        .bind(u.id)
-        .first<{ version: number }>();
-      if ((old?.version || 0) !== p.version)
-        throw new AppError(
-          409,
-          "Profil sudah berubah. Muat ulang profil sebelum menyimpan.",
-        );
-      const next = { ...p, version: p.version + 1 };
-      const result = old
-        ? await db()
-            .prepare(
-              "UPDATE profiles SET data=?,version=?,updated_at=? WHERE user_id=? AND version=?",
-            )
-            .bind(
-              JSON.stringify(next),
-              next.version,
-              new Date().toISOString(),
-              u.id,
-              p.version,
-            )
-            .run()
-        : await db()
-            .prepare(
-              "INSERT OR IGNORE INTO profiles(user_id,data,version,updated_at) VALUES(?,?,?,?)",
-            )
-            .bind(
-              u.id,
-              JSON.stringify(next),
-              next.version,
-              new Date().toISOString(),
-            )
-            .run();
-      if (!result.meta.changes)
-        throw new AppError(
-          409,
-          "Profil berubah saat disimpan. Muat ulang dan coba lagi.",
-        );
-      return json({ profile: next });
-    }
+    if (b.action === "saveProfile") return json(await saveProfile(db(), u.id, b.profile));
     throw new AppError(400, "Aksi tidak dikenal.");
   } catch (e) {
     return failure(e);

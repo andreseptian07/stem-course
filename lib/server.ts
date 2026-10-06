@@ -1,8 +1,8 @@
 import { env } from "cloudflare:workers";
 import { getChatGPTUser } from "@/app/chatgpt-auth";
-import type { Course, Progress } from "./model";
 import { sampleCourse } from "./seed";
-import { blockingLesson } from "./rules";
+import { seedCourse, readCourse, readProgress, accessibleLesson, initializeProgress } from "./course-data.ts";
+import type { PlatformDatabase } from "./database.ts";
 import { validateConfig } from "./judge";
 import type { JudgeConfig } from "./judge";
 import {
@@ -11,7 +11,7 @@ import {
   requireActive,
 } from "./access";
 export { AccessError as AppError } from "./access";
-export function db() {
+export function db(): PlatformDatabase {
   if (!env.DB)
     throw new AppError(
       503,
@@ -54,11 +54,7 @@ export async function identity(allowRestricted = false) {
     config().OWNER_SETUP_ENABLED === "true",
   );
   if (!allowRestricted) requireActive(u);
-  if (u.role === "owner")
-    await d
-      .prepare("INSERT OR IGNORE INTO courses(id,data,version) VALUES(?,?,1)")
-      .bind(sampleCourse.id, JSON.stringify(sampleCourse))
-      .run();
+  if (u.role === "owner") await seedCourse(d, sampleCourse);
   return u;
 }
 export function owner(user: { role: string }) {
@@ -66,55 +62,16 @@ export function owner(user: { role: string }) {
     throw new AppError(403, "Halaman ini hanya untuk pengelola course.");
 }
 export async function course(id: string, user: { role: string }) {
-  const row = await db()
-    .prepare("SELECT data,version FROM courses WHERE id=?")
-    .bind(id)
-    .first<{ data: string; version: number }>();
-  if (!row) throw new AppError(404, "Course tidak ditemukan.");
-  const c = { ...JSON.parse(row.data), version: row.version } as Course;
-  if (!c.published && user.role !== "owner")
-    throw new AppError(404, "Course belum tersedia.");
-  return c;
+  return readCourse(db(), id, user);
 }
 export async function getProgress(userId: string, courseId: string) {
-  return (
-    await db()
-      .prepare(
-        "SELECT lesson_id AS lessonId,revision,complete,quiz_passed AS quizPassed,code_passed AS codePassed,quiz_attempts AS quizAttempts,code_attempts AS codeAttempts,score FROM progress WHERE user_id=? AND course_id=?",
-      )
-      .bind(userId, courseId)
-      .all<Progress>()
-  ).results;
+  return readProgress(db(), userId, courseId);
 }
-export async function accessible(
-  user: { id: string; role: string },
-  courseId: string,
-  lessonId: string,
-) {
-  const c = await course(courseId, user);
-  const l = c.lessons.find((l) => l.id === lessonId);
-  if (!l) throw new AppError(404, "Materi tidak ditemukan.");
-  const p = await getProgress(user.id, c.id);
-  const blocked = blockingLesson(c, l.id, p);
-  if (blocked)
-    throw new AppError(
-      403,
-      `Selesaikan syarat pada “${blocked.title}” terlebih dahulu.`,
-    );
-  return { c, l, p };
+export async function accessible(user: { id: string; role: string }, courseId: string, lessonId: string) {
+  return accessibleLesson(db(), user, courseId, lessonId);
 }
-export async function ensureProgress(
-  userId: string,
-  courseId: string,
-  lessonId: string,
-  revision: number,
-) {
-  await db()
-    .prepare(
-      "INSERT INTO progress(user_id,course_id,lesson_id,revision) VALUES(?,?,?,?) ON CONFLICT(user_id,course_id,lesson_id) DO UPDATE SET revision=excluded.revision,complete=0,quiz_passed=0,code_passed=0,quiz_attempts=0,code_attempts=0,score=0 WHERE progress.revision != excluded.revision",
-    )
-    .bind(userId, courseId, lessonId, revision)
-    .run();
+export async function ensureProgress(userId: string, courseId: string, lessonId: string, revision: number) {
+  return initializeProgress(db(), userId, courseId, lessonId, revision);
 }
 export function json(data: unknown, status = 200) {
   return Response.json(data, {

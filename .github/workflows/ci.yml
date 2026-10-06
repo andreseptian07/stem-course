@@ -33,7 +33,7 @@ jobs:
       # Add the production Node build after the runtime/database/auth port.
 
   mariadb:
-    name: MariaDB foundation
+    name: MariaDB schema and learning flows
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:

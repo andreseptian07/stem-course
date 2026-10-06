@@ -11,8 +11,9 @@ import {
   AppError,
   json,
 } from "@/lib/server";
-import { publicCourse, gradeQuiz, canComplete, progressFor } from "@/lib/rules";
-import { courseSchema, sessionSchema } from "@/lib/validation";
+import { publicCourse } from "@/lib/rules";
+import { courseRows, saveCourse, completeLesson, submitQuiz } from "@/lib/course-data";
+import { learningSessions, saveSession, setRsvp } from "@/lib/session-data";
 import { JudgeError } from "@/lib/judge";
 import { startAttempt, readAttempt, CodeError } from "@/lib/code-attempts";
 import type { Course } from "@/lib/model";
@@ -38,16 +39,6 @@ const ids = z.object({
   courseId: z.string().max(80),
   lessonId: z.string().max(80),
 });
-async function sessions(user: { id: string; role: string }) {
-  return (
-    await db()
-      .prepare(
-        `SELECT s.id,s.course_id AS courseId,s.title,s.kind,s.starts_at AS startsAt,s.duration,s.location,s.capacity,CASE WHEN ?='owner' OR EXISTS(SELECT 1 FROM rsvps WHERE session_id=s.id AND user_id=?) THEN s.url ELSE '' END AS url,(SELECT count(*) FROM rsvps WHERE session_id=s.id) AS count,EXISTS(SELECT 1 FROM rsvps WHERE session_id=s.id AND user_id=?) AS joined FROM sessions s JOIN courses c ON c.id=s.course_id WHERE (?='owner' OR json_extract(c.data,'$.published')=1) ORDER BY s.starts_at`,
-      )
-      .bind(user.role, user.id, user.id, user.role)
-      .all()
-  ).results;
-}
 export async function GET(req: Request) {
   try {
     const u = await identity();
@@ -70,11 +61,7 @@ export async function GET(req: Request) {
     if (q.get("admin") === "1") {
       owner(u);
       return json({
-        courses: (
-          await db()
-            .prepare("SELECT data,version FROM courses ORDER BY rowid")
-            .all<{ data: string; version: number }>()
-        ).results.map((r) => ({ ...JSON.parse(r.data), version: r.version })),
+        courses: (await courseRows(db())).map((r) => ({ ...JSON.parse(r.data), version: r.version })),
         users: (await db().prepare("SELECT id,name,role FROM users").all())
           .results,
         progress: (
@@ -84,7 +71,7 @@ export async function GET(req: Request) {
             )
             .all()
         ).results,
-        sessions: await sessions(u),
+        sessions: await learningSessions(db(), u),
         judgeReady: !!judgeConfig(),
       });
     }
@@ -116,11 +103,7 @@ export async function GET(req: Request) {
       const l = c.lessons.find((l) => l.id === a.lesson_id);
       return json(await readAttempt(db(), judgeConfig(), u.id, a, l?.revision));
     }
-    const rows = (
-      await db()
-        .prepare("SELECT data,version FROM courses ORDER BY rowid")
-        .all<{ data: string; version: number }>()
-    ).results;
+    const rows = await courseRows(db());
     const visible = rows
       .map((r) => ({ ...JSON.parse(r.data), version: r.version }) as Course)
       .filter((c) => c.published || u.role === "owner");
@@ -130,7 +113,7 @@ export async function GET(req: Request) {
       user: u,
       courses: visible.map((c) => publicCourse(c, progress[c.id])),
       progress,
-      sessions: await sessions(u),
+      sessions: await learningSessions(db(), u),
       judgeReady: !!judgeConfig(),
     });
   } catch (e) {
@@ -154,116 +137,11 @@ export async function POST(req: Request) {
       throw new AppError(400, "JSON tidak valid.");
     }
     const u = await identity();
-    if (b.action === "saveCourse") {
-      owner(u);
-      const next = courseSchema.parse(b.course);
-      const old = await db()
-        .prepare("SELECT data,version FROM courses WHERE id=?")
-        .bind(next.id)
-        .first<{ data: string; version: number }>();
-      if (old) {
-        if (old.version !== next.version)
-          throw new AppError(
-            409,
-            "Course sudah berubah. Muat ulang sebelum menyimpan.",
-          );
-        const previous = JSON.parse(old.data) as Course;
-        next.lessons = next.lessons.map((l) => {
-          const prior = previous.lessons.find((p) => p.id === l.id);
-          return {
-            ...l,
-            revision: prior
-              ? JSON.stringify({ ...l, revision: 0 }) ===
-                JSON.stringify({ ...prior, revision: 0 })
-                ? prior.revision
-                : prior.revision + 1
-              : 1,
-          };
-        });
-        next.version = old.version + 1;
-        const updated = await db()
-          .prepare(
-            "UPDATE courses SET data=?,version=? WHERE id=? AND version=?",
-          )
-          .bind(JSON.stringify(next), next.version, next.id, old.version)
-          .run();
-        if (!updated.meta.changes)
-          throw new AppError(
-            409,
-            "Course berubah saat disimpan. Muat ulang dan coba lagi.",
-          );
-      } else {
-        next.version = 1;
-        await db()
-          .prepare("INSERT INTO courses(id,data,version) VALUES(?,?,1)")
-          .bind(next.id, JSON.stringify(next))
-          .run();
-      }
-      return json({ course: next });
-    }
-    if (b.action === "saveSession") {
-      owner(u);
-      const s = sessionSchema.parse(b.session);
-      await course(s.courseId, u);
-      if (Date.parse(s.startsAt) <= Date.now())
-        throw new AppError(400, "Pilih waktu sesi yang akan datang.");
-      const id = s.id || crypto.randomUUID();
-      const registered = await db()
-        .prepare("SELECT COUNT(*) AS total FROM rsvps WHERE session_id=?")
-        .bind(id)
-        .first<{ total: number }>();
-      if ((registered?.total || 0) > s.capacity)
-        throw new AppError(
-          400,
-          "Kapasitas tidak boleh lebih kecil dari jumlah peserta terdaftar.",
-        );
-      await db()
-        .prepare(
-          "INSERT INTO sessions(id,course_id,title,kind,starts_at,duration,location,url,capacity) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET course_id=excluded.course_id,title=excluded.title,kind=excluded.kind,starts_at=excluded.starts_at,duration=excluded.duration,location=excluded.location,url=excluded.url,capacity=excluded.capacity",
-        )
-        .bind(
-          id,
-          s.courseId,
-          s.title,
-          s.kind,
-          s.startsAt,
-          s.duration,
-          s.location,
-          s.url,
-          s.capacity,
-        )
-        .run();
-      return json({ id });
-    }
+    if (b.action === "saveCourse") return json({ course: await saveCourse(db(), u, b.course) });
+    if (b.action === "saveSession") return json(await saveSession(db(), u, b.session));
     if (b.action === "rsvp") {
       const id = z.string().max(80).parse(b.sessionId);
-      const s = await db()
-        .prepare("SELECT * FROM sessions WHERE id=?")
-        .bind(id)
-        .first<any>();
-      if (!s) throw new AppError(404, "Sesi tidak ditemukan.");
-      await course(s.course_id, u);
-      if (Date.parse(s.starts_at) < Date.now())
-        throw new AppError(400, "Pendaftaran sesi sudah ditutup.");
-      if (b.join === false) {
-        await db()
-          .prepare("DELETE FROM rsvps WHERE session_id=? AND user_id=?")
-          .bind(id, u.id)
-          .run();
-        return json({ joined: false });
-      }
-      await db()
-        .prepare(
-          "INSERT OR IGNORE INTO rsvps(session_id,user_id) SELECT ?,? WHERE (SELECT count(*) FROM rsvps WHERE session_id=?) < ?",
-        )
-        .bind(id, u.id, id, s.capacity)
-        .run();
-      const joined = await db()
-        .prepare("SELECT 1 FROM rsvps WHERE session_id=? AND user_id=?")
-        .bind(id, u.id)
-        .first();
-      if (!joined) throw new AppError(409, "Sesi sudah penuh.");
-      return json({ joined: true });
+      return json(await setRsvp(db(), u, id, b.join !== false));
     }
     if (b.action === "message") {
       const m = z
@@ -334,76 +212,13 @@ export async function POST(req: Request) {
       return json({ ok: true });
     }
     const { courseId, lessonId } = ids.parse(b);
-    const { c, l, p } = await accessible(u, courseId, lessonId);
-    await ensureProgress(u.id, c.id, l.id, l.revision);
-    if (b.action === "complete") {
-      if (!canComplete(l, progressFor(l, p)))
-        throw new AppError(403, "Lulus tes wajib terlebih dahulu.");
-      await db()
-        .prepare(
-          "UPDATE progress SET complete=1 WHERE user_id=? AND course_id=? AND lesson_id=? AND revision=?",
-        )
-        .bind(u.id, c.id, l.id, l.revision)
-        .run();
-      return json({ complete: true });
-    }
+    if (b.action === "complete") return json(await completeLesson(db(), u, courseId, lessonId));
     if (b.action === "quiz") {
-      if (!l.quiz) throw new AppError(400, "Materi ini tidak memiliki kuis.");
-      const answers = z
-        .record(z.array(z.number().int().min(0).max(7)).max(8))
-        .parse(b.answers);
-      const reserve = await db()
-        .prepare(
-          "UPDATE progress SET quiz_attempts=quiz_attempts+1 WHERE user_id=? AND course_id=? AND lesson_id=? AND revision=? AND (?=0 OR quiz_attempts<?)",
-        )
-        .bind(
-          u.id,
-          c.id,
-          l.id,
-          l.revision,
-          l.quiz.maxAttempts,
-          l.quiz.maxAttempts,
-        )
-        .run();
-      if (!reserve.meta.changes)
-        throw new AppError(
-          429,
-          "Batas percobaan tercapai. Hubungi mentor untuk membuka percobaan kembali.",
-        );
-      const result = gradeQuiz(l.quiz, answers);
-      const id = crypto.randomUUID();
-      await db().batch([
-        db()
-          .prepare(
-            "UPDATE progress SET quiz_passed=max(quiz_passed,?),score=? WHERE user_id=? AND course_id=? AND lesson_id=? AND revision=?",
-          )
-          .bind(
-            result.passed ? 1 : 0,
-            result.score,
-            u.id,
-            c.id,
-            l.id,
-            l.revision,
-          ),
-        db()
-          .prepare(
-            "INSERT INTO attempts(id,user_id,course_id,lesson_id,revision,kind,state,score,data,created_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
-          )
-          .bind(
-            id,
-            u.id,
-            c.id,
-            l.id,
-            l.revision,
-            "quiz",
-            "finished",
-            result.score,
-            JSON.stringify({ answers, result }),
-            new Date().toISOString(),
-          ),
-      ]);
-      return json(result);
+      const answers = z.record(z.array(z.number().int().min(0).max(7)).max(8)).parse(b.answers);
+      return json(await submitQuiz(db(), u, courseId, lessonId, answers));
     }
+    const { c, l } = await accessible(u, courseId, lessonId);
+    await ensureProgress(u.id, c.id, l.id, l.revision);
     if (b.action === "code") {
       if (!l.exercise)
         throw new AppError(400, "Materi ini tidak memiliki latihan kode.");
