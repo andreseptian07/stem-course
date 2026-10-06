@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   if (
     path.startsWith("/api/") &&
@@ -24,7 +24,7 @@ export function middleware(req: NextRequest) {
   );
   if (
     path.startsWith("/api/") ||
-    ["/dashboard", "/profile", "/classes", "/access", "/learn"].includes(path)
+    ["/dashboard", "/profile", "/classes", "/access", "/learn", "/login", "/register", "/logout", "/password"].includes(path)
   )
     res.headers.set("Cache-Control", "private, no-store");
   return res;

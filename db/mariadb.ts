@@ -4,7 +4,7 @@ import { mariaDbOptions } from "./mariadb-config.ts";
 import * as schema from "./mariadb-schema.ts";
 import { createMariaDbAdapter } from "./mariadb-adapter.ts";
 
-// Server-only foundation. The current Workers runtime continues to use db/index.ts.
+// Server-only MariaDB driver. db/runtime.ts caches the pool for the Node app.
 export function createMariaDb(env: Record<string, string | undefined> = process.env) {
   if (typeof window !== "undefined") throw new Error("Database hanya boleh diakses dari server.");
   const pool = createPool(mariaDbOptions(env));

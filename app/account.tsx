@@ -248,7 +248,7 @@ export default function Account({
               <br />
               satu pemahaman baru.
             </p>
-            <a href="/signout-with-chatgpt?return_to=/" onClick={guard}>
+            <a href="/logout" onClick={guard}>
               <LogOut size={17} />
               Keluar
             </a>
@@ -569,7 +569,7 @@ export default function Account({
                             value={data.user.email}
                             type="email"
                           />
-                          <small>Dikelola melalui akun ChatGPT Anda.</small>
+                          <small>Email akun tidak dapat diubah melalui halaman profil.</small><a href="/password">Ganti password</a>
                         </label>
                         <label className="profile-wide">
                           Institusi atau organisasi

@@ -1,5 +1,6 @@
+import { checkAuthOrigin } from "@/lib/auth-policy";
 import { z } from "zod";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { getSignedUser } from "@/lib/auth";
 import { db, identity, json, AppError } from "@/lib/server";
 import { accountData, enrollCourse, saveProfile } from "@/lib/account-data";
 export const dynamic = "force-dynamic";
@@ -22,7 +23,7 @@ function failure(e: unknown) {
 export async function GET() {
   try {
     const u = await identity();
-    const signed = await getChatGPTUser();
+    const signed = await getSignedUser();
     return json({ user: { ...u, email: signed!.email }, ...await accountData(db(), u) });
   } catch (e) {
     return failure(e);
@@ -30,8 +31,7 @@ export async function GET() {
 }
 export async function POST(req: Request) {
   try {
-    if (req.headers.get("origin") !== new URL(req.url).origin)
-      throw new AppError(403, "Asal permintaan tidak valid.");
+    checkAuthOrigin(req);
     if (!req.headers.get("content-type")?.includes("application/json"))
       throw new AppError(415, "Gunakan JSON.");
     if (Number(req.headers.get("content-length") || 0) > 15000)

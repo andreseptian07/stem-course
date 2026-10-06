@@ -29,11 +29,13 @@ jobs:
         run: npm ci --include=dev --include=optional
       - name: Check types and unit tests
         run: npm run check
-      # This is CI for the existing source, not a Hostinger deployment job.
-      # Add the production Node build after the runtime/database/auth port.
+      - name: Build production Node app
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
 
   mariadb:
-    name: MariaDB schema and learning flows
+    name: MariaDB, authentication and Node HTTP
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -68,3 +70,9 @@ jobs:
           cache: npm
       - run: npm ci --include=dev --include=optional
       - run: npm run test:mariadb
+      - name: Build production Node app
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+        run: npm run build
+      - name: Verify production HTTP and authentication
+        run: npm run test:http

@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-import { requireChatGPTUser } from "@/app/chatgpt-auth";
+import { requireSignedUser } from "./auth.ts";
 import { identity, AppError } from "./server";
 export async function requirePlatformAccess(returnTo: string) {
-  await requireChatGPTUser(returnTo);
+  await requireSignedUser(returnTo);
   try {
     return await identity();
   } catch (e) {

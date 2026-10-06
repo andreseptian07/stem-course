@@ -1,3 +1,4 @@
+import { checkAuthOrigin } from "@/lib/auth-policy";
 import { z } from "zod";
 import { identity, db, json, AppError } from "@/lib/server";
 import {
@@ -40,8 +41,7 @@ export async function GET(req: Request) {
 }
 export async function POST(req: Request) {
   try {
-    if (req.headers.get("origin") !== new URL(req.url).origin)
-      throw new ClassError(403, "Asal permintaan tidak valid.");
+    checkAuthOrigin(req);
     if (!req.headers.get("content-type")?.includes("application/json"))
       throw new ClassError(415, "Gunakan JSON.");
     if (Number(req.headers.get("content-length") || 0) > 20000)

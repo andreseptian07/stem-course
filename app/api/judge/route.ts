@@ -1,10 +1,10 @@
+import { checkAuthOrigin } from "@/lib/auth-policy";
 import { identity, owner, judgeConfig, json, AppError } from "@/lib/server";
 import { inspectJudge } from "@/lib/judge";
 export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
-    if (req.headers.get("origin") !== new URL(req.url).origin)
-      throw new AppError(403, "Asal permintaan tidak valid.");
+    checkAuthOrigin(req);
     owner(await identity());
     const cfg = judgeConfig();
     if (!cfg)

@@ -13,11 +13,11 @@ test("MariaDB foundation on a disposable CI database", {
   const { pool, db } = createMariaDb();
   try {
     await t.test("new database receives the schema and migration journal", async () => {
-      assert.equal(await applyMariaDbMigrations(pool), 1);
+      assert.equal(await applyMariaDbMigrations(pool), 2);
       const [tables] = await pool.query("SELECT TABLE_NAME AS name, ENGINE AS engine, TABLE_COLLATION AS collation FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()");
-      assert.equal(tables.length, 20);
+      assert.equal(tables.length, 23);
       const business = tables.filter((row) => row.name !== "__stem_mariadb_migrations");
-      assert.equal(business.length, 19);
+      assert.equal(business.length, 22);
       for (const table of business) {
         assert.equal(table.engine, "InnoDB");
         assert.equal(table.collation, "utf8mb4_bin");
@@ -49,14 +49,14 @@ test("MariaDB foundation on a disposable CI database", {
       assert.equal(await applyMariaDbMigrations(pool), 0);
       assert.equal((await db.select().from(users)).length, 2);
       const [rows] = await pool.query("SELECT COUNT(*) AS count FROM __stem_mariadb_migrations");
-      assert.equal(Number(rows[0].count), 1);
+      assert.equal(Number(rows[0].count), 2);
       // A changed/unknown migration history is refused rather than reapplied.
-      const [journal] = await pool.query("SELECT hash FROM __stem_mariadb_migrations");
+      const [journal] = await pool.query("SELECT id,hash FROM __stem_mariadb_migrations");
       try {
         await pool.execute("UPDATE __stem_mariadb_migrations SET hash=?", ["invalid-fixture-hash"]);
         await assert.rejects(() => applyMariaDbMigrations(pool), /Riwayat migrasi tidak cocok/);
       } finally {
-        await pool.execute("UPDATE __stem_mariadb_migrations SET hash=?", [journal[0].hash]);
+        for (const entry of journal) await pool.execute("UPDATE __stem_mariadb_migrations SET hash=? WHERE id=?", [entry.hash, entry.id]);
       }
     });
   } finally {

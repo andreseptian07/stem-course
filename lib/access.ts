@@ -60,7 +60,7 @@ export async function registerIdentity(
   if (!owner)
     throw new AccessError(
       503,
-      "Pemilik platform belum disiapkan. Hubungi pengelola Site.",
+      "Pemilik platform belum disiapkan. Hubungi pengelola platform.",
     );
   const role = owner.value === signed.userId ? "owner" : "student";
   const profile = await d

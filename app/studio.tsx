@@ -226,7 +226,7 @@ export default function Studio() {
             className="icon-button"
             title="Keluar"
             aria-label="Keluar"
-            href="/signout-with-chatgpt?return_to=/"
+            href="/logout"
           >
             <LogOut size={16} />
           </a>
@@ -259,10 +259,10 @@ export default function Studio() {
           {signIn ? (
             <a
               className="primary button-link"
-              href={`/signin-with-chatgpt?return_to=${encodeURIComponent("/learn" + (typeof location !== "undefined" ? location.search : ""))}`}
+              href={`/login?return_to=${encodeURIComponent("/learn" + (typeof location !== "undefined" ? location.search : ""))}`}
               target="_top"
             >
-              Masuk dengan ChatGPT
+              Masuk ke akun
             </a>
           ) : failure ? (
             <button className="secondary" onClick={load}>

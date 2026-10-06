@@ -108,7 +108,7 @@ export default function Access() {
                   Buka dashboard
                 </a>
               )}
-              <a href="/signout-with-chatgpt?return_to=/">Keluar</a>
+              <a href="/logout">Keluar</a>
             </div>
           </section>
         )}

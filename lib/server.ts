@@ -1,5 +1,5 @@
-import { env } from "cloudflare:workers";
-import { getChatGPTUser } from "@/app/chatgpt-auth";
+import { runtimeDatabase } from "../db/runtime.ts";
+import { getSignedUser } from "./auth.ts";
 import { sampleCourse } from "./seed";
 import { seedCourse, readCourse, readProgress, accessibleLesson, initializeProgress } from "./course-data.ts";
 import type { PlatformDatabase } from "./database.ts";
@@ -11,17 +11,8 @@ import {
   requireActive,
 } from "./access";
 export { AccessError as AppError } from "./access";
-export function db(): PlatformDatabase {
-  if (!env.DB)
-    throw new AppError(
-      503,
-      "Database belum tersedia. Coba lagi setelah konfigurasi selesai.",
-    );
-  return env.DB;
-}
-export function config() {
-  return env as unknown as Record<string, string>;
-}
+export function db(): PlatformDatabase { return runtimeDatabase(); }
+export function config() { return process.env as Record<string, string>; }
 export function judgeConfig(): JudgeConfig | null {
   const e = config();
   if (e.JUDGE0_ENABLED !== "true" || !e.JUDGE0_URL) return null;
@@ -44,14 +35,14 @@ export function judgeConfig(): JudgeConfig | null {
   }
 }
 export async function identity(allowRestricted = false) {
-  const signed = await getChatGPTUser();
+  const signed = await getSignedUser();
   if (!signed)
     throw new AppError(401, "Silakan masuk untuk menyimpan progres belajar.");
   const d = db();
   const u = await registerIdentity(
     d,
     signed,
-    config().OWNER_SETUP_ENABLED === "true",
+    false,
   );
   if (!allowRestricted) requireActive(u);
   if (u.role === "owner") await seedCourse(d, sampleCourse);

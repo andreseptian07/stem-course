@@ -711,7 +711,7 @@ function CourseDetail({
               Mulai belajar
             </a>
             {!data.user && (
-              <small>Masuk dengan ChatGPT untuk menyimpan progres.</small>
+              <small>Masuk ke akun untuk menyimpan progres.</small>
             )}
             <a
               className="portal-text-link"

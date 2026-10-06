@@ -1,5 +1,5 @@
 // Node/MariaDB schema. The existing D1 schema remains in schema.ts.
-import { mysqlTable, varchar, longtext, int, bigint, primaryKey, index } from "drizzle-orm/mysql-core";
+import { mysqlTable, varchar, longtext, int, bigint, primaryKey, index, uniqueIndex } from "drizzle-orm/mysql-core";
 export const settings = mysqlTable("settings", {
   key: varchar("key", { length: 191 }).primaryKey(),
   value: longtext("value").notNull(),
@@ -238,3 +238,26 @@ export const accessEvents = mysqlTable(
   },
   (t) => [index("access_events_time").on(t.createdAt)],
 );
+
+export const authCredentials = mysqlTable("auth_credentials", {
+  userId: varchar("user_id", { length: 191 }).primaryKey(),
+  email: varchar("email", { length: 254 }).notNull(),
+  displayName: longtext("display_name").notNull(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  passwordVersion: int("password_version").notNull().default(1),
+  createdAt: varchar("created_at", { length: 32 }).notNull(),
+  updatedAt: varchar("updated_at", { length: 32 }).notNull(),
+}, (t) => [uniqueIndex("auth_credentials_email_unique").on(t.email)]);
+export const authSessions = mysqlTable("auth_sessions", {
+  tokenHash: varchar("token_hash", { length: 64 }).primaryKey(),
+  userId: varchar("user_id", { length: 191 }).notNull(),
+  passwordVersion: int("password_version").notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  lastSeen: bigint("last_seen", { mode: "number" }).notNull(),
+  expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+}, (t) => [index("auth_sessions_user_idx").on(t.userId), index("auth_sessions_expiry_idx").on(t.expiresAt)]);
+export const authLimits = mysqlTable("auth_limits", {
+  bucketId: varchar("bucket_id", { length: 64 }).primaryKey(),
+  hits: int("hits").notNull(),
+  expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+}, (t) => [index("auth_limits_expiry_idx").on(t.expiresAt)]);
