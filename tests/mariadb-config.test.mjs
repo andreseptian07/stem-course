@@ -16,6 +16,7 @@ test("MariaDB config preserves password and requires authenticated TLS by defaul
   assert.equal(options.ssl.rejectUnauthorized, true);
   assert.equal(options.ssl.verifyIdentity, true);
   assert.equal(options.multipleStatements, false);
+  assert.deepEqual(options.flags, ["-FOUND_ROWS"]);
   assert.equal(options.connectionLimit, 3);
   assert.equal(options.queueLimit, 30);
 });

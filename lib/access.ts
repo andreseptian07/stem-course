@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { databaseSql } from "./database.ts";
+import type { PlatformDatabase } from "./database.ts";
 export class AccessError extends Error {
   status: number;
   constructor(status: number, message: string) {
@@ -30,24 +32,30 @@ export const accessMutation = z
   })
   .strict();
 export async function registerIdentity(
-  d: D1Database,
+  d: PlatformDatabase,
   signed: { userId: string; displayName: string },
   bootstrap: boolean,
 ): Promise<PlatformUser> {
   if (bootstrap)
     await d
       .prepare(
-        "INSERT OR IGNORE INTO settings(key,value) SELECT 'owner',? WHERE NOT EXISTS(SELECT 1 FROM settings WHERE key='owner_setup_closed' AND value='true')",
+        databaseSql(d,
+          "INSERT OR IGNORE INTO settings(key,value) SELECT 'owner',? WHERE NOT EXISTS(SELECT 1 FROM settings WHERE key='owner_setup_closed' AND value='true')",
+          "INSERT INTO settings(`key`,value) SELECT 'owner',? WHERE NOT EXISTS(SELECT 1 FROM settings WHERE `key`='owner_setup_closed' AND value='true') ON DUPLICATE KEY UPDATE `key`=`key`",
+        ),
       )
       .bind(signed.userId)
       .run();
   await d
     .prepare(
-      "INSERT OR IGNORE INTO settings(key,value) SELECT 'owner_setup_closed','true' WHERE EXISTS(SELECT 1 FROM settings WHERE key='owner')",
+      databaseSql(d,
+        "INSERT OR IGNORE INTO settings(key,value) SELECT 'owner_setup_closed','true' WHERE EXISTS(SELECT 1 FROM settings WHERE key='owner')",
+        "INSERT INTO settings(`key`,value) SELECT 'owner_setup_closed','true' WHERE EXISTS(SELECT 1 FROM settings WHERE `key`='owner') ON DUPLICATE KEY UPDATE `key`=`key`",
+      ),
     )
     .run();
   const owner = await d
-    .prepare("SELECT value FROM settings WHERE key='owner'")
+    .prepare("SELECT value FROM settings WHERE `key`='owner'")
     .first<{ value: string }>();
   if (!owner)
     throw new AccessError(
@@ -66,12 +74,18 @@ export async function registerIdentity(
   await d.batch([
     d
       .prepare(
-        "INSERT INTO users(id,name,role) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role",
+        databaseSql(d,
+          "INSERT INTO users(id,name,role) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role",
+          "INSERT INTO users(id,name,role) VALUES(?,?,?) ON DUPLICATE KEY UPDATE name=VALUES(name),role=VALUES(role)",
+        ),
       )
       .bind(signed.userId, name, role),
     d
       .prepare(
-        "INSERT OR IGNORE INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,?,1,?,?)",
+        databaseSql(d,
+          "INSERT OR IGNORE INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,?,1,?,?)",
+          "INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,?,1,?,?) ON DUPLICATE KEY UPDATE user_id=user_id",
+        ),
       )
       .bind(signed.userId, role === "owner" ? "active" : "pending", at, at),
   ]);
@@ -96,9 +110,9 @@ export function requireActive(u: PlatformUser) {
         : "Akun menunggu persetujuan pengelola. Buka halaman Akses akun untuk melihat status.",
     );
 }
-async function requireOwner(d: D1Database, u: { id: string }) {
+async function requireOwner(d: PlatformDatabase, u: { id: string }) {
   const o = await d
-    .prepare("SELECT value FROM settings WHERE key='owner'")
+    .prepare("SELECT value FROM settings WHERE `key`='owner'")
     .first<{ value: string }>();
   if (!o || o.value !== u.id)
     throw new AccessError(
@@ -107,7 +121,7 @@ async function requireOwner(d: D1Database, u: { id: string }) {
     );
   return o.value;
 }
-export async function accessOverview(d: D1Database, u: PlatformUser) {
+export async function accessOverview(d: PlatformDatabase, u: PlatformUser) {
   const result: any = {
     user: { id: u.id, name: u.name, role: u.role },
     status: u.accessStatus,
@@ -126,14 +140,17 @@ export async function accessOverview(d: D1Database, u: PlatformUser) {
   result.events = (
     await d
       .prepare(
-        `SELECT e.id,e.target_id AS targetId,t.name AS targetName,e.actor_id AS actorId,a.name AS actorName,e.status,e.reason,e.created_at AS createdAt FROM access_events e JOIN users t ON t.id=e.target_id JOIN users a ON a.id=e.actor_id ORDER BY e.created_at DESC,e.rowid DESC LIMIT 100`,
+        databaseSql(d,
+          `SELECT e.id,e.target_id AS targetId,t.name AS targetName,e.actor_id AS actorId,a.name AS actorName,e.status,e.reason,e.created_at AS createdAt FROM access_events e JOIN users t ON t.id=e.target_id JOIN users a ON a.id=e.actor_id ORDER BY e.created_at DESC,e.rowid DESC LIMIT 100`,
+          `SELECT e.id,e.target_id AS targetId,t.name AS targetName,e.actor_id AS actorId,a.name AS actorName,e.status,e.reason,e.created_at AS createdAt FROM access_events e JOIN users t ON t.id=e.target_id JOIN users a ON a.id=e.actor_id ORDER BY e.created_at DESC,e.id DESC LIMIT 100`,
+        ),
       )
       .all()
   ).results;
   return result;
 }
 export async function updateAccess(
-  d: D1Database,
+  d: PlatformDatabase,
   u: { id: string },
   raw: unknown,
 ) {
@@ -161,12 +178,15 @@ export async function updateAccess(
   const change = row
     ? d
         .prepare(
-          `UPDATE user_access SET status=?,version=version+1,updated_at=? WHERE user_id=? AND version=? AND user_id!=(SELECT value FROM settings WHERE key='owner') AND ?=(SELECT value FROM settings WHERE key='owner')`,
+          "UPDATE user_access SET status=?,version=version+1,updated_at=? WHERE user_id=? AND version=? AND user_id!=(SELECT value FROM settings WHERE `key`='owner') AND ?=(SELECT value FROM settings WHERE `key`='owner')",
         )
         .bind(b.status, at, b.userId, b.version, u.id)
     : d
         .prepare(
-          `INSERT OR IGNORE INTO user_access(user_id,status,version,created_at,updated_at) SELECT ?,?,1,?,? WHERE ?=(SELECT value FROM settings WHERE key='owner') AND ?!=(SELECT value FROM settings WHERE key='owner')`,
+          databaseSql(d,
+            "INSERT OR IGNORE INTO user_access(user_id,status,version,created_at,updated_at) SELECT ?,?,1,?,? WHERE ?=(SELECT value FROM settings WHERE `key`='owner') AND ?!=(SELECT value FROM settings WHERE `key`='owner')",
+            "INSERT INTO user_access(user_id,status,version,created_at,updated_at) SELECT ?,?,1,?,? WHERE ?=(SELECT value FROM settings WHERE `key`='owner') AND ?!=(SELECT value FROM settings WHERE `key`='owner') ON DUPLICATE KEY UPDATE user_id=user_id",
+          ),
         )
         .bind(b.userId, b.status, at, at, u.id, b.userId);
   // Audit is part of the same transaction. Deterministic per-account/version IDs make a losing concurrent update unable to duplicate events.
@@ -174,7 +194,10 @@ export async function updateAccess(
     change,
     d
       .prepare(
-        `INSERT OR IGNORE INTO access_events(id,actor_id,target_id,status,reason,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND version=? AND status=?) AND ?=(SELECT value FROM settings WHERE key='owner')`,
+        databaseSql(d,
+          "INSERT OR IGNORE INTO access_events(id,actor_id,target_id,status,reason,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND version=? AND status=?) AND ?=(SELECT value FROM settings WHERE `key`='owner')",
+          "INSERT INTO access_events(id,actor_id,target_id,status,reason,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND version=? AND status=?) AND ?=(SELECT value FROM settings WHERE `key`='owner') ON DUPLICATE KEY UPDATE id=id",
+        ),
       )
       .bind(
         b.userId + ":" + (b.version + 1),

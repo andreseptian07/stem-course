@@ -64,7 +64,11 @@ SQL ada di `mariadb/0000_big_captain_marvel.sql`. Jalankan melalui runner agar r
 
 Sudah disiapkan: driver `mysql2`, konfigurasi koneksi Node.js, skema Drizzle MariaDB, SQL migrasi, pengecekan koneksi, pengelolaan migrasi, dan pengujian CI pada database sementara.
 
-**Aplikasi utama masih memakai D1.** Modul `db/mariadb.ts` belum menjadi pengganti `lib/server.ts` atau API peserta. Query SQLite (`rowid`, `ON CONFLICT`, fungsi waktu dan sebagian JSON), transaksi bisnis, autentikasi, dan runtime produksi masih perlu dipindahkan sebelum aplikasi dapat menyimpan kegiatan peserta di MariaDB. Mengisi password saja belum menyelesaikan migrasi platform.
+**Aplikasi utama masih memakai D1.** Modul `db/mariadb.ts` belum menjadi pengganti `lib/server.ts` atau API peserta. Pengelolaan akses pada `lib/access.ts` sudah memiliki query D1 dan MariaDB, dengan antarmuka bersama pada `lib/database.ts`. Modul MariaDB menyediakan adapter `database` selain pool dan ORM; query dipilih secara eksplisit, bukan diterjemahkan melalui regex saat dijalankan.
+
+Adapter menggunakan prepared statements, transaksi untuk batch, dan named lock per database untuk mempertahankan serialisasi penulisan D1. Insert duplikat yang tidak mengubah data melaporkan nol, sehingga konflik versi dan audit tetap dapat dikenali. Koneksi dengan kegagalan rollback atau pelepasan lock tidak dikembalikan ke pool. Serialisasi ini merupakan pilihan awal untuk menjaga aturan akses/kuota; skalabilitas penulisan perlu ditinjau sebelum trafik besar.
+
+Port query course/profil/progres/kelas/tugas/coding, autentikasi dan runtime produksi masih diperlukan. Mengisi password saja belum menyelesaikan migrasi platform. Pengujian MariaDB tambahan mencakup persetujuan bersamaan dan rollback audit; hasilnya harus diverifikasi melalui CI, terpisah dari tes unit yang memakai SQLite atau pool palsu.
 
 Koneksi ke database Hostinger belum diverifikasi karena password diisi manual oleh pengguna. Hasil pengujian CI tidak membuktikan hostname, izin akun, TLS atau jaringan Hostinger sudah benar.
 

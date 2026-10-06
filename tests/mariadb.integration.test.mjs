@@ -51,8 +51,13 @@ test("MariaDB foundation on a disposable CI database", {
       const [rows] = await pool.query("SELECT COUNT(*) AS count FROM __stem_mariadb_migrations");
       assert.equal(Number(rows[0].count), 1);
       // A changed/unknown migration history is refused rather than reapplied.
-      await pool.execute("UPDATE __stem_mariadb_migrations SET hash=?", ["invalid-fixture-hash"]);
-      await assert.rejects(() => applyMariaDbMigrations(pool), /Riwayat migrasi tidak cocok/);
+      const [journal] = await pool.query("SELECT hash FROM __stem_mariadb_migrations");
+      try {
+        await pool.execute("UPDATE __stem_mariadb_migrations SET hash=?", ["invalid-fixture-hash"]);
+        await assert.rejects(() => applyMariaDbMigrations(pool), /Riwayat migrasi tidak cocok/);
+      } finally {
+        await pool.execute("UPDATE __stem_mariadb_migrations SET hash=?", [journal[0].hash]);
+      }
     });
   } finally {
     await pool.end();

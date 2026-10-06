@@ -1,5 +1,7 @@
 # STEM Studio
 
+Repository utama: [andreseptian07/stem-course](https://github.com/andreseptian07/stem-course). Lihat [pengaturan repository dan autentikasi GitHub](docs/GitHub-Repository.md). CI memeriksa source; deployment Hostinger masih menunggu port runtime dan fitur aplikasi.
+
 MVP platform e-course berbahasa Indonesia: ruang belajar, authoring course, kuis bertingkat, latihan coding, diskusi mentor, dan jadwal sesi online/offline. Konten ESP32 bawaan hanya contoh yang boleh diganti.
 
 ## Pilihan teknologi

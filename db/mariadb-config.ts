@@ -48,6 +48,8 @@ export function mariaDbOptions(env: Environment): PoolOptions {
     timezone: "Z",
     dateStrings: true,
     multipleStatements: false,
+    // A no-op duplicate insertion must report zero, as it does on D1.
+    flags: ["-FOUND_ROWS"],
     enableKeepAlive: true,
     ...(mode === "required"
       ? { ssl: { rejectUnauthorized: true, verifyIdentity: true, ...(ca ? { ca } : {}) } }
