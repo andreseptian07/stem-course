@@ -45,11 +45,13 @@ export async function POST(req: Request) {
     } catch {
       throw new AppError(400, "JSON tidak valid.");
     }
-    const u = await identity();
+    const u = await identity(true);
     if (b.action === "enroll") {
+      if (u.accessStatus === "suspended") throw new AppError(403, "Akun ditangguhkan. Hubungi Super Admin.");
       const id = z.string().min(1).max(80).parse(b.courseId);
       return json(await enrollCourse(db(), u, id));
     }
+    if (u.accessStatus !== "active") throw new AppError(403, "Akun menunggu persetujuan Super Admin.");
     if (b.action === "saveProfile") return json(await saveProfile(db(), u.id, b.profile));
     throw new AppError(400, "Aksi tidak dikenal.");
   } catch (e) {

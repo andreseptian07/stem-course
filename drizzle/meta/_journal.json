@@ -43,6 +43,13 @@
       "when": 1791255974014,
       "tag": "0005_zippy_ultron",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1791325789368,
+      "tag": "0006_smooth_wrecker",
+      "breakpoints": true
     }
   ]
 }

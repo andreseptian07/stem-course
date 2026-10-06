@@ -62,7 +62,8 @@ export async function registerIdentity(
       503,
       "Pemilik platform belum disiapkan. Hubungi pengelola platform.",
     );
-  const role = owner.value === signed.userId ? "owner" : "student";
+  const tutor = await d.prepare("SELECT 1 WHERE EXISTS(SELECT 1 FROM tutor_accounts WHERE user_id=? AND active=1) OR EXISTS(SELECT 1 FROM cohorts WHERE mentor_id=? AND status!='archived')").bind(signed.userId, signed.userId).first();
+  const role = owner.value === signed.userId ? "owner" : tutor ? "tutor" : "student";
   const profile = await d
     .prepare("SELECT data FROM profiles WHERE user_id=?")
     .bind(signed.userId)
@@ -110,7 +111,7 @@ export function requireActive(u: PlatformUser) {
         : "Akun menunggu persetujuan pengelola. Buka halaman Akses akun untuk melihat status.",
     );
 }
-async function requireOwner(d: PlatformDatabase, u: { id: string }) {
+export async function requireOwner(d: PlatformDatabase, u: { id: string }) {
   const o = await d
     .prepare("SELECT value FROM settings WHERE `key`='owner'")
     .first<{ value: string }>();
@@ -132,7 +133,7 @@ export async function accessOverview(d: PlatformDatabase, u: PlatformUser) {
   result.users = (
     await d
       .prepare(
-        `SELECT u.id,u.name,CASE WHEN u.id=? THEN 'owner' ELSE 'student' END AS role,CASE WHEN u.id=? THEN 'active' ELSE COALESCE(a.status,'pending') END AS status,COALESCE(a.version,0) AS version,a.created_at AS createdAt,(SELECT count(*) FROM cohorts WHERE mentor_id=u.id AND status!='archived') AS mentorClasses FROM users u LEFT JOIN user_access a ON a.user_id=u.id ORDER BY CASE WHEN u.id=? THEN 0 WHEN a.status IS NULL OR a.status='pending' THEN 1 WHEN a.status='active' THEN 2 ELSE 3 END,u.name`,
+        `SELECT u.id,u.name,CASE WHEN u.id=? THEN 'owner' WHEN EXISTS(SELECT 1 FROM tutor_accounts t WHERE t.user_id=u.id AND t.active=1) OR EXISTS(SELECT 1 FROM cohorts WHERE mentor_id=u.id AND status!='archived') THEN 'tutor' ELSE 'student' END AS role,CASE WHEN u.id=? THEN 'active' ELSE COALESCE(a.status,'pending') END AS status,COALESCE(a.version,0) AS version,a.created_at AS createdAt,(SELECT count(*) FROM cohorts WHERE mentor_id=u.id AND status!='archived') AS mentorClasses FROM users u LEFT JOIN user_access a ON a.user_id=u.id ORDER BY CASE WHEN u.id=? THEN 0 WHEN a.status IS NULL OR a.status='pending' THEN 1 WHEN a.status='active' THEN 2 ELSE 3 END,u.name`,
       )
       .bind(u.id, u.id, u.id)
       .all()

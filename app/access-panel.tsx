@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { ShieldCheck, Layers3, RefreshCw } from "lucide-react";
 import "./account.css";
 import "./access.css";
+import TutorManagement from "./tutor-management";
 const labels: Record<string, string> = {
   pending: "Menunggu persetujuan",
   active: "Aktif",
@@ -120,21 +121,17 @@ export default function Access() {
             </div>
             <p className="access-help">
               Akun baru menunggu persetujuan. Akses belajar berlaku untuk
-              peserta dan mentor; penugasan mentor diatur per kelas. Persetujuan
+              siswa dan tutor; penugasan tutor diatur per kelas. Persetujuan
               akun tidak memberikan izin mengelola course.
             </p>
-            <p className="access-help">
-              Untuk masuk pertama kali, pengguna juga perlu diberi akses Site
-              melalui pengaturan berbagi. Halaman ini tidak mengirim undangan
-              dan tidak mengubah siapa yang dapat mengunjungi Site.
-            </p>
+            <TutorManagement users={data.users} onChanged={load} />
             <div className="access-controls">
               <label>
                 Cari nama akun
                 <input
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Nama peserta atau mentor"
+                  placeholder="Nama siswa atau tutor"
                 />
               </label>
               <label>
@@ -161,10 +158,10 @@ export default function Access() {
                     <small>ID {u.id}</small>
                     <p>
                       {u.role === "owner"
-                        ? "Pemilik platform"
-                        : u.mentorClasses
-                          ? `Peserta · mentor di ${u.mentorClasses} kelas`
-                          : "Peserta"}
+                        ? "Super Admin"
+                        : u.role === "tutor" || u.mentorClasses
+                          ? `Tutor · ${u.mentorClasses} kelas ditugaskan`
+                          : "Siswa"}
                     </p>
                     <span className={"access-status " + u.status}>
                       {labels[u.status]}

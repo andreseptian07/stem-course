@@ -4,6 +4,12 @@
   color: #223b37;
   font-family: Arial, sans-serif;
 }
+.tutor-invite-form { display: grid; gap: 16px; }
+.tutor-invite-form h2, .tutor-invite-form p { margin: 0; }
+.tutor-management p { line-height: 1.65; }
+.tutor-invitation-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; padding: 18px 0; border-bottom: 1px solid #dfe8e5; }
+.tutor-invitation-row p { margin: 7px 0; }
+.tutor-management small { line-height: 1.6; color: #526f68; }
 .access-main {
   max-width: 1040px;
   padding: 45px 30px;

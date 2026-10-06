@@ -4,6 +4,7 @@ import { catalogCourse } from "@/lib/catalog";
 import type { Course } from "@/lib/model";
 import { courseRows } from "@/lib/course-data";
 import { publicSessions } from "@/lib/session-data";
+import { registrationEnabled } from "@/lib/registration";
 export const dynamic = "force-dynamic";
 export async function GET() {
   try {
@@ -17,7 +18,8 @@ export async function GET() {
     return json({
       courses,
       sessions,
-      user: user ? { name: user.name, role: user.role } : null,
+      user: user ? { name: user.name, role: user.role, accessStatus: user.accessStatus } : null,
+      registrationEnabled: await registrationEnabled(db()),
     });
   } catch (e) {
     console.error(

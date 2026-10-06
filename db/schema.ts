@@ -5,6 +5,20 @@ import {
   primaryKey,
   index,
 } from "drizzle-orm/sqlite-core";
+export const tutorAccounts = sqliteTable("tutor_accounts", {
+  userId: text("user_id").primaryKey(), active: integer("active").notNull().default(1),
+  grantedBy: text("granted_by").notNull(), grantedAt: text("granted_at").notNull(), revokedAt: text("revoked_at"),
+});
+export const tutorInvitations = sqliteTable("tutor_invitations", {
+  id: text("id").primaryKey(), tokenHash: text("token_hash").notNull().unique(), email: text("email").notNull(),
+  displayName: text("display_name").notNull(), classId: text("class_id"), createdBy: text("created_by").notNull(),
+  createdAt: text("created_at").notNull(), expiresAt: integer("expires_at").notNull(), acceptedUserId: text("accepted_user_id"),
+  acceptedAt: text("accepted_at"), activationId: text("activation_id"), revokedAt: text("revoked_at"),
+}, (t) => [index("tutor_invitation_email_idx").on(t.email)]);
+export const tutorEvents = sqliteTable("tutor_events", {
+  id: text("id").primaryKey(), actorId: text("actor_id").notNull(), targetEmail: text("target_email").notNull(),
+  kind: text("kind").notNull(), reason: text("reason").notNull(), createdAt: text("created_at").notNull(),
+}, (t) => [index("tutor_events_time_idx").on(t.createdAt)]);
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

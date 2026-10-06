@@ -5,8 +5,8 @@ Runtime Node memakai login email/password sendiri. Tidak memerlukan akun ChatGPT
 ## Alur kelas percobaan
 
 1. Operator menyiapkan MariaDB dan membuat owner dengan `npm run auth:admin -- create-owner`. Detail ada di [panduan Hostinger](Deploy-Hostinger.md). Owner ditentukan melalui terminal operator, bukan pendaftar publik pertama.
-2. Owner masuk di `/login`; buka pendaftaran melalui `AUTH_REGISTRATION_ENABLED=true` setelah konfigurasi awal benar.
-3. Peserta/mentor membuat akun di `/register`, lalu masuk. Akun baru berstatus **Menunggu persetujuan** pada `/access`; API belajar ditolak sampai persetujuan.
+2. Super Admin masuk di `/login`; buka **Kelola akses → Pendaftaran siswa → Buka pendaftaran siswa**. Pilihan ini tersimpan di database dan mengutamakan nilai awal environment.
+3. Siswa membuat akun di `/register`, lalu masuk. Akun baru berstatus **Menunggu persetujuan** pada `/access`; API belajar ditolak sampai persetujuan. Course yang dipilih saat pendaftaran disimpan tanpa membuka materi. Tutor diundang oleh Super Admin melalui tautan aktivasi, bukan memilih peran saat mendaftar.
 4. Owner membuka **Kelola akses**, menyetujui akun dengan alasan. Peserta memuat ulang status, lalu membuka dashboard.
 5. Owner menugaskan mentor dan menyetujui peserta per kelas. Persetujuan akun dan keanggotaan kelas tetap terpisah.
 6. Uji dua akun nyata di hosting untuk memastikan privasi tugas/feedback, progres wajib, review, dan penangguhan. Fixture CI tidak menggantikan pengujian DNS, TLS, cookie browser dan jaringan Hostinger.
@@ -24,7 +24,7 @@ Alamat email belum diverifikasi melalui email otomatis. Pengelola perlu memverif
 | Membaca diskusi/meeting kelas | Semua kelas | Kelas yang disetujui | Kelas yang ditugaskan |
 | Review tugas dan feedback pribadi | Semua kelas | Hanya milik sendiri | Kelas yang ditugaskan |
 
-Mentor merupakan penugasan kelas, bukan admin global. Settings.owner menentukan pemilik; role dari isian, header browser atau tabel users tidak memberikan kepemilikan. Owner tidak dapat menangguhkan dirinya sendiri dari aplikasi.
+Tutor memiliki hak mengajar yang diberikan melalui undangan admin dan cakupan penugasan kelas; penugasan mentor lama tetap dikenali. Tutor tidak memiliki akses admin global. Settings.owner menentukan pemilik; role dari isian, header browser atau tabel users tidak memberikan kepemilikan. Owner tidak dapat menangguhkan dirinya sendiri dari aplikasi. Lihat [panduan undangan Tutor](Tutor-Invitations.md) untuk aktivasi dan pencabutan hak.
 
 Penangguhan menolak permintaan API belajar berikutnya meskipun cookie login masih valid; halaman status, logout dan ganti password tetap dapat digunakan. Permintaan yang sedang berjalan dapat selesai dan materi yang sudah diterima browser tidak dapat ditarik kembali. Penangguhan tidak menghapus progres, pekerjaan atau penugasan kelas. Hapus penugasan/keanggotaan secara terpisah bila hak tersebut tidak ingin dipulihkan setelah akun diaktifkan kembali.
 

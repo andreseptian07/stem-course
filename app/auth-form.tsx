@@ -5,8 +5,12 @@ import "./auth.css";
 type Mode = "login" | "register" | "password" | "logout";
 export default function AuthForm({ mode, returnTo = "/dashboard", registrationEnabled = false }: { mode: Mode; returnTo?: string; registrationEnabled?: boolean }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [done, setDone] = useState(false);
+  const loginHref = `/login?return_to=${encodeURIComponent(returnTo)}`;
+  const registerHref = `/register?return_to=${encodeURIComponent(returnTo)}`;
+  const requestedCourse = returnTo.startsWith("/dashboard?") ? new URL(returnTo, "https://app.local").searchParams.get("join") : null;
+  const courseId = requestedCourse && /^[a-zA-Z0-9_-]{1,80}$/.test(requestedCourse) ? requestedCourse : undefined;
   const titles = { login: "Selamat datang kembali", register: "Mulai perjalanan belajar", password: "Ganti password", logout: "Keluar dari akun" };
-  const descriptions = { login: "Masuk untuk melanjutkan course dan terhubung dengan mentor.", register: "Buat akun peserta. Pengelola akan meninjau permintaan akses Anda.", password: "Setelah password diganti, semua sesi akun akan diakhiri.", logout: "Progres belajar Anda tetap tersimpan. Anda bisa masuk kembali kapan saja." };
+  const descriptions = { login: "Masuk untuk melanjutkan course dan terhubung dengan tutor.", register: "Buat akun Siswa. Super Admin akan meninjau permintaan akses Anda.", password: "Setelah password diganti, semua sesi akun akan diakhiri.", logout: "Progres belajar Anda tetap tersimpan. Anda bisa masuk kembali kapan saja." };
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
@@ -16,7 +20,7 @@ export default function AuthForm({ mode, returnTo = "/dashboard", registrationEn
     setBusy(true); setError("");
     const payload = mode === "logout" ? { action: mode } : mode === "password"
       ? { action: mode, currentPassword: values.get("currentPassword"), password }
-      : mode === "register" ? { action: mode, email: values.get("email"), displayName: values.get("displayName"), password }
+      : mode === "register" ? { action: mode, email: values.get("email"), displayName: values.get("displayName"), password, ...(courseId ? { courseId } : {}) }
       : { action: mode, email: values.get("email"), password, returnTo };
     try {
       const response = await fetch("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
@@ -33,7 +37,7 @@ export default function AuthForm({ mode, returnTo = "/dashboard", registrationEn
       <span className="auth-eyebrow">RUANG BELAJAR STEM</span>
       <h1>{titles[mode]}</h1><p>{descriptions[mode]}</p>
       {error && <div className="auth-error" role="alert">{error}</div>}
-      {done ? <div className="auth-success" role="status"><ShieldCheck /><h2>Akun berhasil dibuat</h2><p>Silakan masuk untuk melihat status persetujuan akses Anda.</p><a className="auth-button" href="/login">Masuk ke akun</a></div>
+      {done ? <div className="auth-success" role="status"><ShieldCheck /><h2>Akun berhasil dibuat</h2><p>Silakan masuk untuk melihat status persetujuan akses Anda. Setelah disetujui, course yang dipilih dapat dilanjutkan dari dashboard.</p><a className="auth-button" href={loginHref}>Masuk ke akun</a></div>
         : mode === "register" && !registrationEnabled ? <p>Pendaftaran belum dibuka. Hubungi pengelola untuk informasi akses.</p>
         : <form method="post" action="/api/auth" onSubmit={submit}>
           {(mode === "login" || mode === "register") && <label>Email<input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="nama@email.com" /></label>}
@@ -43,7 +47,7 @@ export default function AuthForm({ mode, returnTo = "/dashboard", registrationEn
           {(mode === "register" || mode === "password") && <><small>Gunakan frasa unik dengan 15–128 karakter.</small><label>Konfirmasi password<input name="repeatPassword" type="password" autoComplete="new-password" required minLength={15} maxLength={128} /></label></>}
           <button className="auth-button" disabled={busy} type="submit">{busy && <Loader2 className="spin" size={18} />}{mode === "login" ? "Masuk" : mode === "register" ? "Buat akun" : mode === "password" ? "Simpan password baru" : "Keluar"}</button>
         </form>}
-      <div className="auth-links">{mode === "login" ? <>{registrationEnabled && <a href="/register">Belum punya akun? Daftar</a>}<small>Lupa password? Hubungi pengelola untuk pemulihan akun.</small></> : <a href={mode === "password" || mode === "logout" ? "/profile" : "/login"}>{mode === "password" || mode === "logout" ? "Kembali ke profil" : "Sudah punya akun? Masuk"}</a>}</div>
+      <div className="auth-links">{mode === "login" ? <><a href={registerHref}>Belum punya akun? Daftar</a>{!registrationEnabled && <small>Pendaftaran sedang ditutup oleh Super Admin.</small>}<small>Lupa password? Hubungi pengelola untuk pemulihan akun.</small></> : <a href={mode === "password" || mode === "logout" ? "/profile" : loginHref}>{mode === "password" || mode === "logout" ? "Kembali ke profil" : "Sudah punya akun? Masuk"}</a>}</div>
     </section><a className="auth-home" href="/courses">Jelajahi course</a>
   </main>;
 }

@@ -68,6 +68,9 @@
   padding: 9px 15px;
   white-space: nowrap;
 }
+.portal-auth-actions { display: flex; align-items: center; gap: 10px; margin-left: auto; }
+.portal-register { background: var(--teal); color: white; border-radius: 7px; padding: 10px 16px; font-weight: 650; font-size: 14px; white-space: nowrap; }
+.portal-register:focus-visible { outline: 3px solid #137d7950; outline-offset: 3px; }
 .portal-skip {
   position: fixed;
   top: -100px;

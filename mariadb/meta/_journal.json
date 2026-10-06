@@ -15,6 +15,13 @@
       "when": 1791280728898,
       "tag": "0001_sharp_vin_gonzales",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1791325319589,
+      "tag": "0002_flaky_lady_vermin",
+      "breakpoints": true
     }
   ]
 }

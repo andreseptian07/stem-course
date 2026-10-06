@@ -23,6 +23,11 @@ export function safeReturnPath(value: unknown) {
     return `${url.pathname}${url.search}${url.hash}`;
   } catch { return "/dashboard"; }
 }
+export function courseFromReturnPath(value: unknown) {
+  const target = new URL(safeReturnPath(value), "https://app.local");
+  const id = target.pathname === "/dashboard" ? target.searchParams.get("join") : null;
+  return id && /^[a-zA-Z0-9_-]{1,80}$/.test(id) ? id : undefined;
+}
 export const sessionDuration = 8 * 60 * 60 * 1000;
 export const idleDuration = 60 * 60 * 1000;
 export function sessionCookie(env = process.env) {

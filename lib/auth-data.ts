@@ -4,6 +4,7 @@ import type { PlatformDatabase } from "./database.ts";
 import { AuthError, sessionDuration, idleDuration } from "./auth-policy.ts";
 import { hashPassword, verifyPassword, validatePassword } from "./auth-password.ts";
 import { registerIdentity } from "./access.ts";
+import { publishedSql } from "./database-sql.ts";
 
 export type SignedUser = { userId: string; displayName: string; email: string };
 type Credential = SignedUser & { passwordHash: string; passwordVersion: number };
@@ -11,6 +12,7 @@ export const registrationSchema = z.object({
   email: z.string().trim().email().max(254).transform((v) => v.toLowerCase()),
   displayName: z.string().trim().min(1).max(100),
   password: z.string().min(15).max(128),
+  courseId: z.string().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/).optional(),
 }).strict();
 export const loginSchema = z.object({ email: registrationSchema.shape.email, password: z.string().min(1).max(128) }).strict();
 const digest = (text: string) => createHash("sha256").update(text).digest("hex");
@@ -28,13 +30,14 @@ async function consumeLimit(d: PlatformDatabase, key: string, limit: number, win
   const row = await d.prepare("SELECT hits FROM auth_limits WHERE bucket_id=?").bind(bucket).first<{ hits: number }>();
   if (!row || row.hits > limit) throw new AuthError(429, "Terlalu banyak percobaan. Coba lagi setelah jeda.");
 }
-export async function authRateLimit(d: PlatformDatabase, action: "login" | "register" | "password", email: string, at = Date.now()) {
+export async function authRateLimit(d: PlatformDatabase, action: "login" | "register" | "password" | "invite" | "activate", email: string, at = Date.now()) {
   await d.prepare("DELETE FROM auth_limits WHERE expires_at<=?").bind(at).run();
-  const window = action === "register" ? 60 * 60 * 1000 : 15 * 60 * 1000;
+  const registration = action === "register" || action === "invite";
+  const window = registration ? 60 * 60 * 1000 : 15 * 60 * 1000;
   // A shared database budget cannot be bypassed with forged forwarding headers.
   // Check it first so random email addresses cannot create unbounded buckets.
-  await consumeLimit(d, `global:${action}`, action === "register" ? 20 : 100, window, at);
-  await consumeLimit(d, `${action}:${email}`, action === "register" ? 3 : 10, window, at);
+  await consumeLimit(d, `global:${action}`, registration ? 20 : 100, window, at);
+  await consumeLimit(d, `${action}:${email}`, registration ? 3 : 10, window, at);
 }
 export async function registerAccount(d: PlatformDatabase, raw: unknown, enabled: boolean) {
   if (!enabled) throw new AuthError(403, "Pendaftaran belum dibuka. Hubungi pengelola.");
@@ -42,21 +45,25 @@ export async function registerAccount(d: PlatformDatabase, raw: unknown, enabled
   validatePassword(b.password);
   await ownerExists(d);
   await authRateLimit(d, "register", b.email);
+  if (b.courseId && !(await d.prepare(`SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")}`).bind(b.courseId).first()))
+    throw new AuthError(404, "Course belum tersedia untuk pendaftaran.");
   const hash = await hashPassword(b.password), id = randomUUID(), at = new Date().toISOString();
   try {
-    await d.batch([
+    const statements = [
       d.prepare("INSERT INTO auth_credentials(user_id,email,display_name,password_hash,password_version,created_at,updated_at) VALUES(?,?,?,?,1,?,?)").bind(id, b.email, b.displayName, hash, at, at),
       d.prepare("INSERT INTO users(id,name,role) VALUES(?,?,'student')").bind(id, b.displayName),
       d.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'pending',1,?,?)").bind(id, at, at),
-    ]);
+    ];
+    if (b.courseId) statements.push(d.prepare(`INSERT INTO enrollments(user_id,course_id,created_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")})`).bind(id, b.courseId, at, b.courseId));
+    const result = await d.batch(statements);
+    return { registered: true, courseRequested: b.courseId ? !!result[3].meta.changes : false };
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ER_DUP_ENTRY")
       throw new AuthError(400, "Pendaftaran belum dapat disimpan. Jika sudah memiliki akun, gunakan halaman masuk.");
     throw error;
   }
-  return { registered: true };
 }
-export async function loginAccount(d: PlatformDatabase, raw: unknown, previousToken?: string) {
+export async function loginAccount(d: PlatformDatabase, raw: unknown, previousToken?: string, requestedCourse?: string) {
   const b = loginSchema.parse(raw);
   await ownerExists(d);
   await authRateLimit(d, "login", b.email);
@@ -65,7 +72,7 @@ export async function loginAccount(d: PlatformDatabase, raw: unknown, previousTo
     throw new AuthError(401, "Email atau password tidak sesuai.");
   const user = await registerIdentity(d, credential, false);
   const token = randomBytes(32).toString("base64url"), hash = digest(token), now = Date.now();
-  const result = await d.batch([
+  const statements = [
     d.prepare("DELETE FROM auth_sessions WHERE expires_at<=? OR last_seen<=?").bind(now, now - idleDuration),
     d.prepare("DELETE FROM auth_sessions WHERE token_hash=?").bind(tokenValid(previousToken) ? digest(previousToken) : ""),
     d.prepare("INSERT INTO auth_sessions(token_hash,user_id,password_version,created_at,last_seen,expires_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM auth_credentials WHERE user_id=? AND password_version=?)")
@@ -73,7 +80,12 @@ export async function loginAccount(d: PlatformDatabase, raw: unknown, previousTo
     // Keep the newest five sessions per account; ties have a stable token order.
     d.prepare("DELETE FROM auth_sessions WHERE user_id=? AND token_hash NOT IN (SELECT token_hash FROM (SELECT token_hash FROM auth_sessions WHERE user_id=? ORDER BY (token_hash=?) DESC,created_at DESC,token_hash DESC LIMIT 5) AS recent)")
       .bind(credential.userId, credential.userId, hash),
-  ]);
+  ];
+  if (requestedCourse) {
+    registrationSchema.shape.courseId.parse(requestedCourse);
+    statements.push(d.prepare(`INSERT INTO enrollments(user_id,course_id,created_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")}) AND EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND status!='suspended') ON DUPLICATE KEY UPDATE user_id=user_id`).bind(user.id, requestedCourse, new Date().toISOString(), requestedCourse, user.id));
+  }
+  const result = await d.batch(statements);
   if (!result[2].meta.changes) throw new AuthError(401, "Password berubah. Silakan masuk kembali.");
   return { token, accessStatus: user.accessStatus };
 }
@@ -94,7 +106,7 @@ export async function logoutSession(d: PlatformDatabase, token: unknown) {
   if (tokenValid(token)) await d.prepare("DELETE FROM auth_sessions WHERE token_hash=?").bind(digest(token)).run();
 }
 export async function createOwner(d: PlatformDatabase, raw: unknown) {
-  const b = registrationSchema.parse(raw);
+  const b = registrationSchema.omit({ courseId: true }).strict().parse(raw);
   const hash = await hashPassword(b.password), id = randomUUID(), at = new Date().toISOString();
   const results = await d.batch([
     d.prepare("INSERT INTO auth_credentials(user_id,email,display_name,password_hash,password_version,created_at,updated_at) SELECT ?,?,?,?,1,?,? WHERE NOT EXISTS(SELECT 1 FROM settings WHERE `key`='owner')").bind(id, b.email, b.displayName, hash, at, at),

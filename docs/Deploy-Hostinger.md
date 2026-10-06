@@ -24,7 +24,7 @@ npm run db:check
 npm run db:migrate:mariadb -- --apply
 ```
 
-`db:check` hanya membaca koneksi/TLS/versi. Jalankan migrasi hanya setelah koneksi benar, pada database khusus yang kosong atau sudah memiliki riwayat migrasi STEM. Instalasi baru membuat 22 tabel aplikasi dan satu tabel riwayat. Migrasi kedua menambahkan kredensial, sesi, dan pembatasan login; migrasi pertama tidak diubah. Database hosting harus MariaDB 10.11 atau lebih baru.
+`db:check` hanya membaca koneksi/TLS/versi. Jalankan migrasi hanya setelah koneksi benar, pada database khusus yang kosong atau sudah memiliki riwayat migrasi STEM. Instalasi baru membuat 25 tabel aplikasi dan satu tabel riwayat melalui tiga migrasi. Migrasi kedua menambahkan autentikasi; migrasi ketiga menambahkan akun Tutor, undangan dan audit. Migrasi terdahulu tidak diubah. Terapkan migrasi baru sebelum deployment source yang memakainya. Database hosting harus MariaDB 10.11 atau lebih baru.
 
 Akses dari komputer lokal memerlukan allowlist IP operator pada Remote MySQL. Konfirmasikan hostname dan TLS Hostinger; jangan mematikan pemeriksaan sertifikat untuk mengatasi mismatch IP/hostname. Jika hosting memiliki database dengan data lain, pilih database terpisah atau tinjau backup sebelum migrasi.
 
@@ -85,7 +85,7 @@ Masukkan setiap nilai hPanel tanpa kutip pembungkus. Hostname database yang dise
 
 `APP_URL` adalah origin HTTPS persis yang dibuka browser, tanpa path. Bila pertama kali menguji dengan domain sementara HTTPS Hostinger, gunakan origin sementara tersebut sebagai `APP_URL`, lalu ganti dan redeploy setelah domain course aktif. Origin POST dipatok ke konfigurasi ini; domain sementara tidak dapat menulis jika APP_URL masih domain course. Jangan mengubahnya menjadi wildcard.
 
-Pendaftaran awal ditutup. Setelah owner berhasil masuk, buka pendaftaran dengan `AUTH_REGISTRATION_ENABLED=true` dan redeploy/restart sesuai pengaturan hPanel. Peserta baru tetap menunggu persetujuan pada `/access`. Belum ada verifikasi email otomatis, jadi pengelola perlu memastikan identitas peserta sebelum menyetujui. Email pendaftar belum membuktikan kepemilikan alamat email.
+Pendaftaran awal ditutup. Setelah Super Admin berhasil masuk, buka **Kelola akses → Pendaftaran siswa → Buka pendaftaran siswa**. Pilihan database berlaku langsung dan mengutamakan `AUTH_REGISTRATION_ENABLED`; environment tersebut menjadi nilai awal ketika admin belum menetapkan pilihan. Mengedit file `.env` di hosting tidak menjamin perubahan proses Node yang sudah berjalan; konfigurasi environment membutuhkan redeploy/restart, sedangkan tombol admin tidak. Siswa baru tetap menunggu persetujuan pada `/access`. Belum ada verifikasi email otomatis, jadi pengelola perlu memastikan identitas sebelum menyetujui. Lihat [alur akun dan undangan Tutor](Tutor-Invitations.md).
 
 ## 5. Domain dan SSL
 

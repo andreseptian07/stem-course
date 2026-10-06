@@ -165,10 +165,13 @@ export default function Portal({
           </a>
           <a href="/learn?view=sessions">Sesi mentor</a>
         </nav>
-        <a className="portal-login" href="/dashboard">
-          {data?.user ? <BookOpen size={17} /> : <LogIn size={17} />}{" "}
-          {data?.user ? "Dashboard" : "Masuk"}
-        </a>
+        <div className="portal-auth-actions">
+          <a className="portal-login" href={data?.user ? "/dashboard" : "/login"}>
+            {data?.user ? <BookOpen size={17} /> : <LogIn size={17} />}{" "}
+            {data?.user ? "Dashboard" : "Masuk"}
+          </a>
+          {!data?.user && <a className="portal-register" href="/register">Daftar</a>}
+        </div>
       </header>
       <main id="portal-content">
         {view === "home" && (
@@ -484,6 +487,19 @@ function CourseDetail({
 }) {
   const modules = Array.from(new Set(c.curriculum.map((l) => l.module)));
   const sessions = data.sessions.filter((s) => s.courseId === c.id);
+  const [joining, setJoining] = useState(false), [joinError, setJoinError] = useState("");
+  const login = `/login?return_to=${encodeURIComponent(learnUrl(c))}`;
+  const register = `/register?return_to=${encodeURIComponent(learnUrl(c))}`;
+  async function requestEnrollment() {
+    setJoining(true); setJoinError("");
+    try {
+      const r = await fetch("/api/account", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "enroll", courseId: c.id }) });
+      const result = await r.json() as { error?: string };
+      if (!r.ok) throw new Error(result.error || "Pendaftaran course belum tersimpan.");
+      location.assign(data.user?.accessStatus === "pending" ? "/access" : "/dashboard");
+    } catch (e) { setJoinError(e instanceof Error ? e.message : "Pendaftaran course belum berhasil."); }
+    finally { setJoining(false); }
+  }
   return (
     <>
       <section className="detail-hero">
@@ -707,12 +723,15 @@ function CourseDetail({
                 <dd>Diskusi per materi</dd>
               </div>
             </dl>
-            <a className="primary button-link" href={learnUrl(c)}>
-              Mulai belajar
-            </a>
-            {!data.user && (
-              <small>Masuk ke akun untuk menyimpan progres.</small>
-            )}
+            {!data.user ? <>
+              <a className="primary button-link" href={register}>Daftar course</a>
+              <a className="portal-text-link" href={login}>Sudah punya akun? Masuk</a>
+              <small>Akun Siswa dan pilihan course Anda disimpan. Akses belajar dibuka setelah persetujuan Super Admin.</small>
+            </> : data.user.accessStatus === "suspended" ? <a className="primary button-link" href="/access">Lihat status akun</a> : <>
+              <button className="primary" disabled={joining} onClick={requestEnrollment}>{joining ? "Mendaftarkan…" : "Daftar course"}</button>
+              <small>{data.user.accessStatus === "pending" ? "Pilihan course disimpan sambil menunggu persetujuan Super Admin." : "Course akan masuk ke dashboard belajar Anda."}</small>
+            </>}
+            {joinError && <p className="error" role="alert">{joinError}</p>}
             <a
               className="portal-text-link"
               href={`/learn?view=sessions&course=${encodeURIComponent(c.id)}`}

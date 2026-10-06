@@ -29,8 +29,8 @@ export async function accountData(d: PlatformDatabase, u: ClassUser) {
 export async function enrollCourse(d: PlatformDatabase, u: ClassUser, id: string) {
   const c = await readCourse(d, id, u);
   if (!c.published) throw new AppError(400, "Course belum diterbitkan.");
-  const result = await d.prepare(`${databaseSql(d, "INSERT OR IGNORE", "INSERT")} INTO enrollments(user_id,course_id,created_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")}) ${databaseSql(d, "", "ON DUPLICATE KEY UPDATE user_id=user_id")}`)
-    .bind(u.id, id, new Date().toISOString(), id).run();
+  const result = await d.prepare(`${databaseSql(d, "INSERT OR IGNORE", "INSERT")} INTO enrollments(user_id,course_id,created_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")}) AND EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND status IN ('pending','active')) ${databaseSql(d, "", "ON DUPLICATE KEY UPDATE user_id=user_id")}`)
+    .bind(u.id, id, new Date().toISOString(), id, u.id).run();
   if (!result.meta.changes && !(await d.prepare("SELECT 1 FROM enrollments WHERE user_id=? AND course_id=?").bind(u.id, id).first()))
     throw new AppError(409, "Course belum diterbitkan.");
   return { courseId: id };

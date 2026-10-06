@@ -201,7 +201,7 @@ export default function Account({
       </header>
       <div className="account-layout">
         <aside className="account-sidebar">
-          <span className="eyebrow">RUANG PESERTA</span>
+          <span className="eyebrow">{data?.user.role === "owner" ? "RUANG SUPER ADMIN" : data?.user.role === "tutor" ? "RUANG TUTOR" : "RUANG SISWA"}</span>
           <nav aria-label="Navigasi akun">
             <a
               className={view === "dashboard" ? "selected" : ""}

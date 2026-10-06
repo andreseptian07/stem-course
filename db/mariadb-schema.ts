@@ -261,3 +261,33 @@ export const authLimits = mysqlTable("auth_limits", {
   hits: int("hits").notNull(),
   expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
 }, (t) => [index("auth_limits_expiry_idx").on(t.expiresAt)]);
+
+export const tutorAccounts = mysqlTable("tutor_accounts", {
+  userId: varchar("user_id", { length: 191 }).primaryKey(),
+  active: int("active").notNull().default(1),
+  grantedBy: varchar("granted_by", { length: 191 }).notNull(),
+  grantedAt: varchar("granted_at", { length: 32 }).notNull(),
+  revokedAt: varchar("revoked_at", { length: 32 }),
+});
+export const tutorInvitations = mysqlTable("tutor_invitations", {
+  id: varchar("id", { length: 191 }).primaryKey(),
+  tokenHash: varchar("token_hash", { length: 64 }).notNull(),
+  email: varchar("email", { length: 254 }).notNull(),
+  displayName: longtext("display_name").notNull(),
+  classId: varchar("class_id", { length: 191 }),
+  createdBy: varchar("created_by", { length: 191 }).notNull(),
+  createdAt: varchar("created_at", { length: 32 }).notNull(),
+  expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+  acceptedUserId: varchar("accepted_user_id", { length: 191 }),
+  acceptedAt: varchar("accepted_at", { length: 32 }),
+  activationId: varchar("activation_id", { length: 191 }),
+  revokedAt: varchar("revoked_at", { length: 32 }),
+}, (t) => [uniqueIndex("tutor_invitation_token_unique").on(t.tokenHash), index("tutor_invitation_email_idx").on(t.email)]);
+export const tutorEvents = mysqlTable("tutor_events", {
+  id: varchar("id", { length: 191 }).primaryKey(),
+  actorId: varchar("actor_id", { length: 191 }).notNull(),
+  targetEmail: varchar("target_email", { length: 254 }).notNull(),
+  kind: varchar("kind", { length: 32 }).notNull(),
+  reason: longtext("reason").notNull(),
+  createdAt: varchar("created_at", { length: 32 }).notNull(),
+}, (t) => [index("tutor_events_time_idx").on(t.createdAt)]);
