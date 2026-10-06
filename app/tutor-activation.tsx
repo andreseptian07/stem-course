@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { BookOpen, ShieldCheck } from "lucide-react";
 import "./auth.css";
+import PasswordField from "./password-field";
 const storageKey = "stem-tutor-invitation";
 async function api(body: unknown) {
   const r = await fetch("/api/tutor-activation", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -54,8 +55,8 @@ export default function TutorActivation({ signedEmail }: { signedEmail: string |
         <form onSubmit={submit}>
           <label>Email penerima undangan<input name="email" type="email" required maxLength={254} autoComplete="email" /></label>
           {!info.existingAccount && <>
-            <label>Password baru<input name="password" type="password" required minLength={15} maxLength={128} autoComplete="new-password" /></label>
-            <label>Konfirmasi password<input name="repeatPassword" type="password" required minLength={15} maxLength={128} autoComplete="new-password" /></label>
+            <PasswordField label="Password baru" name="password" autoComplete="new-password" minLength={15} />
+            <PasswordField label="Konfirmasi password" name="repeatPassword" autoComplete="new-password" minLength={15} />
             <small>Gunakan frasa unik sepanjang 15–128 karakter.</small>
           </>}
           <button className="auth-button" disabled={busy || (info.existingAccount && !signedEmail)}>{busy ? "Mengaktifkan…" : "Aktifkan hak Tutor"}</button>

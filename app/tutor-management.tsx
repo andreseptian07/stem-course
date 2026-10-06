@@ -31,10 +31,10 @@ export default function TutorManagement({ users, onChanged }: { users: any[]; on
       <button className="primary" disabled={busy || enabled === null} onClick={() => void perform(async () => {
         const r = await api("/api/registration", { enabled: !enabled }); setEnabled(r.enabled); setNotice(r.enabled ? "Pendaftaran siswa dibuka. Formulir Daftar sudah tersedia di web." : "Pendaftaran siswa ditutup.");
       })}>{enabled ? "Tutup pendaftaran siswa" : "Buka pendaftaran siswa"}</button>
-      <p><small>Pengaturan ini berlaku langsung dan mengutamakan pilihan Super Admin atas nilai awal environment hosting.</small></p>
+      <p><small>Perubahan berlaku langsung. Akun baru tetap perlu persetujuan Anda sebelum belajar.</small></p>
       <a href="/register" target="_blank" rel="noopener noreferrer">Lihat halaman pendaftaran</a>
     </section>
-    {error && <p className="feedback error" role="alert">{error}</p>}
+    {error && <div className="feedback error" role="alert"><span>{error}</span><button type="button" className="secondary" disabled={busy} onClick={() => void perform(load)}>Coba lagi</button></div>}
     {notice && <p className="feedback success" role="status">{notice}</p>}
     <form className="access-card tutor-invite-form" onSubmit={(e) => {
       e.preventDefault(); void perform(async () => {
@@ -64,9 +64,9 @@ export default function TutorManagement({ users, onChanged }: { users: any[]; on
         {!i.acceptedAt && !i.revokedAt && Number(i.expiresAt) > Date.now() && <button className="secondary" disabled={busy} onClick={() => void perform(async () => { await api("/api/tutors", { action: "revokeInvite", id: i.id }); if (issued?.id === i.id) setIssued(null); await load(); setNotice("Undangan dibatalkan."); })}>Batalkan undangan</button>}
       </article>)}
     </section>
-    {!!tutors.length && <form className="access-card tutor-invite-form" onSubmit={(e) => {
-      e.preventDefault(); void perform(async () => { await api("/api/tutors", { action: "revokeTutor", userId: target, reason }); setTarget(""); setReason(""); await load(); await onChanged(); setNotice("Hak Tutor dan penugasannya dicabut. Akun serta riwayat pekerjaan tetap tersedia sebagai Siswa sesuai status akses."); });
-    }}><h2>Cabut hak Tutor</h2><p>Seluruh penugasan mengajar akun ini akan dilepas. Progres, kiriman, dan review terdahulu tetap disimpan.</p><label>Akun Tutor<select required value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Pilih Tutor</option>{tutors.map((u) => <option key={u.id} value={u.id}>{u.name} · {u.mentorClasses} kelas</option>)}</select></label><label>Alasan pencabutan<textarea required maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></label><button className="primary" disabled={busy}>Cabut hak Tutor</button></form>}
+    {!!tutors.length && <details className="tutor-revoke"><summary>Cabut hak mengajar Tutor</summary><form className="access-card tutor-invite-form" onSubmit={(e) => {
+      e.preventDefault(); if (!confirm("Cabut hak mengajar dan seluruh penugasan kelas Tutor ini? Riwayat pekerjaan tetap disimpan.")) return; void perform(async () => { await api("/api/tutors", { action: "revokeTutor", userId: target, reason }); setTarget(""); setReason(""); await load(); await onChanged(); setNotice("Hak Tutor dan penugasannya dicabut. Akun serta riwayat pekerjaan tetap tersedia sebagai Siswa sesuai status akses."); });
+    }}><h2>Cabut hak Tutor</h2><p>Seluruh penugasan mengajar akun ini akan dilepas. Progres, kiriman, dan review terdahulu tetap disimpan.</p><label>Akun Tutor<select required value={target} onChange={(e) => setTarget(e.target.value)}><option value="">Pilih Tutor</option>{tutors.map((u) => <option key={u.id} value={u.id}>{u.name} · {u.mentorClasses} kelas</option>)}</select></label><label>Alasan pencabutan<textarea required maxLength={1000} value={reason} onChange={(e) => setReason(e.target.value)} /></label><button className="danger-button" disabled={busy}>Cabut hak Tutor</button></form></details>}
     {!!data?.events.length && <section className="access-card"><h2>Riwayat undangan dan hak Tutor</h2>{data.events.map((event: any) => <p key={event.id}><strong>{kinds[event.kind] || event.kind}</strong> · {event.email}<br /><small>{date(event.createdAt)} · {event.reason}</small></p>)}</section>}
   </section>;
 }

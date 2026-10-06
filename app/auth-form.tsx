@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { BookOpen, Loader2, ShieldCheck } from "lucide-react";
 import "./auth.css";
+import PasswordField from "./password-field";
 type Mode = "login" | "register" | "password" | "logout";
 export default function AuthForm({ mode, returnTo = "/dashboard", registrationEnabled = false }: { mode: Mode; returnTo?: string; registrationEnabled?: boolean }) {
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [done, setDone] = useState(false);
@@ -42,9 +43,9 @@ export default function AuthForm({ mode, returnTo = "/dashboard", registrationEn
         : <form method="post" action="/api/auth" onSubmit={submit}>
           {(mode === "login" || mode === "register") && <label>Email<input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="nama@email.com" /></label>}
           {mode === "register" && <label>Nama tampilan<input name="displayName" autoComplete="name" required maxLength={100} /></label>}
-          {mode === "password" && <label>Password saat ini<input name="currentPassword" type="password" autoComplete="current-password" required maxLength={128} /></label>}
-          {mode !== "logout" && <label>{mode === "password" ? "Password baru" : "Password"}<input name="password" type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} required minLength={mode === "login" ? 1 : 15} maxLength={128} /></label>}
-          {(mode === "register" || mode === "password") && <><small>Gunakan frasa unik dengan 15–128 karakter.</small><label>Konfirmasi password<input name="repeatPassword" type="password" autoComplete="new-password" required minLength={15} maxLength={128} /></label></>}
+          {mode === "password" && <PasswordField label="Password saat ini" name="currentPassword" autoComplete="current-password" minLength={1} />}
+          {mode !== "logout" && <PasswordField label={mode === "password" ? "Password baru" : "Password"} name="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? 1 : 15} />}
+          {(mode === "register" || mode === "password") && <><small>Gunakan frasa unik dengan 15–128 karakter.</small><PasswordField label="Konfirmasi password" name="repeatPassword" autoComplete="new-password" minLength={15} /></>}
           <button className="auth-button" disabled={busy} type="submit">{busy && <Loader2 className="spin" size={18} />}{mode === "login" ? "Masuk" : mode === "register" ? "Buat akun" : mode === "password" ? "Simpan password baru" : "Keluar"}</button>
         </form>}
       <div className="auth-links">{mode === "login" ? <><a href={registerHref}>Belum punya akun? Daftar</a>{!registrationEnabled && <small>Pendaftaran sedang ditutup oleh Super Admin.</small>}<small>Lupa password? Hubungi pengelola untuk pemulihan akun.</small></> : <a href={mode === "password" || mode === "logout" ? "/profile" : loginHref}>{mode === "password" || mode === "logout" ? "Kembali ke profil" : "Sudah punya akun? Masuk"}</a>}</div>

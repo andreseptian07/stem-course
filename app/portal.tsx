@@ -157,13 +157,13 @@ export default function Portal({
           </b>
         </a>
         <nav aria-label="Navigasi utama">
-          <a className={view === "home" ? "selected" : ""} href="/">
+          <a className={view === "home" ? "selected" : ""} aria-current={view === "home" ? "page" : undefined} href="/">
             Beranda
           </a>
-          <a className={view !== "home" ? "selected" : ""} href="/courses">
+          <a className={view !== "home" ? "selected" : ""} aria-current={view !== "home" ? "page" : undefined} href="/courses">
             Katalog course
           </a>
-          <a href="/learn?view=sessions">Sesi mentor</a>
+          <a href="/learn?view=sessions">Sesi Tutor</a>
         </nav>
         <div className="portal-auth-actions">
           <a className="portal-login" href={data?.user ? "/dashboard" : "/login"}>
@@ -548,7 +548,7 @@ function CourseDetail({
           <nav className="detail-section-nav" aria-label="Bagian course">
             <a href="#tujuan">Tujuan belajar</a>
             <a href="#kurikulum">Kurikulum</a>
-            <a href="#mentor">Mentor & sesi</a>
+            <a href="#mentor">Tutor & sesi</a>
           </nav>
           {c.sample && (
             <div className="detail-note">
@@ -645,7 +645,7 @@ function CourseDetail({
           </section>
           <section id="mentor">
             <div className="eyebrow teal">PENDAMPINGAN</div>
-            <h2>Mentor & sesi belajar</h2>
+            <h2>Tutor & sesi belajar</h2>
             <article className="detail-mentor">
               <span className="mentor-icon">
                 <Users size={26} />

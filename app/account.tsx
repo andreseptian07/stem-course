@@ -18,6 +18,9 @@ import {
   Check,
   Settings2,
   Users,
+  Menu,
+  ChevronDown,
+
 } from "lucide-react";
 import type { AccountState, Profile, DashboardCourse } from "@/lib/account";
 import "./account.css";
@@ -71,6 +74,7 @@ export default function Account({
   view: "dashboard" | "profile";
   join?: string;
 }) {
+  const [mobileMenu, setMobileMenu] = useState(false);
   const [data, setData] = useState<AccountState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -190,21 +194,23 @@ export default function Account({
           <Search size={17} />
           Jelajahi course
         </a>
-        <div className="account-user">
+        <a className="account-user" href="/profile" aria-label="Buka profil saya" onClick={guard}>
           <span
             className={`account-avatar ${data?.profile.avatarColor || "teal"}`}
           >
             {initials(data?.user.name || "ST")}
           </span>
           <span>{data?.user.name || "Akun saya"}</span>
-        </div>
+        </a>
       </header>
       <div className="account-layout">
-        <aside className="account-sidebar">
+        <aside className={`account-sidebar ${mobileMenu ? "mobile-nav-open" : ""}`}>
           <span className="eyebrow">{data?.user.role === "owner" ? "RUANG SUPER ADMIN" : data?.user.role === "tutor" ? "RUANG TUTOR" : "RUANG SISWA"}</span>
-          <nav aria-label="Navigasi akun">
+          <button type="button" className="account-menu-toggle" aria-expanded={mobileMenu} aria-controls="account-navigation" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={19} />Menu akun<ChevronDown size={17} /></button>
+          <nav id="account-navigation" aria-label="Navigasi akun">
             <a
               className={view === "dashboard" ? "selected" : ""}
+              aria-current={view === "dashboard" ? "page" : undefined}
               href="/dashboard"
               onClick={guard}
             >
@@ -213,6 +219,7 @@ export default function Account({
             </a>
             <a
               className={view === "profile" ? "selected" : ""}
+              aria-current={view === "profile" ? "page" : undefined}
               href="/profile"
               onClick={guard}
             >
@@ -221,7 +228,7 @@ export default function Account({
             </a>
             <a href="/classes" onClick={guard}>
               <Users size={19} />
-              Kelas & mentor
+              Kelas & Tutor
             </a>
             <a href="/access" onClick={guard}>
               <Users size={19} />
@@ -229,7 +236,7 @@ export default function Account({
             </a>
             <a href="/learn?view=sessions" onClick={guard}>
               <CalendarDays size={19} />
-              Sesi mentor
+              Sesi Tutor
             </a>
             <a href="/courses" onClick={guard}>
               <BookOpen size={19} />
@@ -241,6 +248,7 @@ export default function Account({
                 Kelola course
               </a>
             )}
+            <a className="account-mobile-logout" href="/logout" onClick={guard}><LogOut size={19} />Keluar</a>
           </nav>
           <div className="account-sidebar-bottom">
             <p>
@@ -260,7 +268,7 @@ export default function Account({
               <div className="eyebrow teal">
                 {view === "dashboard"
                   ? "PERJALANAN BELAJAR ANDA"
-                  : "AKUN PESERTA"}
+                  : "PROFIL AKUN"}
               </div>
               <h1>
                 {view === "dashboard"
@@ -275,7 +283,7 @@ export default function Account({
             </div>
             {view === "profile" && data && (
               <span className="pill">
-                {data.user.role === "owner" ? "Pengelola" : "Peserta"}
+                {data.user.role === "owner" ? "Super Admin" : data.user.role === "tutor" ? "Tutor" : "Siswa"}
               </span>
             )}
           </div>

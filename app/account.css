@@ -929,3 +929,22 @@
     white-space: normal;
   }
 }
+.account-menu-toggle { display: none; }
+.account-sidebar nav > .account-mobile-logout { display: none; }
+.account-user:focus-visible { border-radius: 24px; }
+.account-page-heading h1, .account-course h3 { overflow-wrap: anywhere; }
+@media(max-width:760px) {
+  .account-menu-toggle { display:flex; justify-content:flex-start; gap:10px; width:100%; min-height:44px; background:#edf5f3; color:#096b64; padding:10px 12px; }
+  .account-menu-toggle svg:last-child { margin-left:auto; transition:transform .15s; }
+  .mobile-nav-open .account-menu-toggle svg:last-child { transform:rotate(180deg); }
+  .account-sidebar nav { display:none; }
+  .account-sidebar.mobile-nav-open nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding-top:10px; gap:6px; overflow:visible; }
+  .account-sidebar nav > a, .account-sidebar nav > .account-mobile-logout { display:flex; white-space:normal; min-height:44px; font-size:13px; }
+  .account-sidebar nav > a svg { flex-shrink:0; }
+  .account-header { padding:14px 16px; gap:12px; }
+  .account-header > a:nth-child(2) { font-size:13px; line-height:1.4; text-align:center; min-height:44px; }
+  .account-main { padding:26px 16px 42px; }
+  .account-filter button { min-height:40px; }
+}
+.account-sidebar > .eyebrow { color:#526c75; }
+@media(max-width:760px) { .profile-fields input:not([type="checkbox"]), .profile-fields textarea { font-size:16px; } }

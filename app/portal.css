@@ -987,3 +987,4 @@
     transform: none;
   }
 }
+@media(max-width:760px) { .catalog-search input, .catalog-filters select { font-size:16px; min-height:44px; } .portal-header nav a, .portal-login, .portal-register { min-height:44px; } }

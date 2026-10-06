@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ShieldCheck, Layers3, RefreshCw } from "lucide-react";
 import "./account.css";
 import "./access.css";
@@ -31,6 +31,9 @@ async function api(body?: unknown) {
   return d;
 }
 export default function Access() {
+  const [section, setSection] = useState("accounts");
+  const changeDialog = useRef<HTMLDialogElement>(null);
+  const changeOpener = useRef<HTMLButtonElement | null>(null);
   const [data, setData] = useState<any>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
@@ -39,6 +42,12 @@ export default function Access() {
     [change, setChange] = useState<any>(null),
     [reason, setReason] = useState(""),
     [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const dialog = changeDialog.current;
+    if (!dialog) return;
+    if (change && !dialog.open) dialog.showModal();
+    if (!change && dialog.open) { dialog.close(); changeOpener.current?.focus(); }
+  }, [change]);
   async function load() {
     setError("");
     try {
@@ -58,6 +67,7 @@ export default function Access() {
     );
   return (
     <div className="account-shell access-shell">
+      <a className="account-skip" href="#access-main">Lewati ke konten</a>
       <header className="account-header">
         <a className="account-brand" href="/">
           <Layers3 />
@@ -65,7 +75,7 @@ export default function Access() {
         </a>
         <a href="/courses">Jelajahi course</a>
       </header>
-      <main className="access-main">
+      <main className="access-main" id="access-main">
         <div className="access-heading">
           <div>
             <div className="eyebrow teal">AKUN & PERIZINAN</div>
@@ -79,7 +89,7 @@ export default function Access() {
             Muat ulang
           </button>
         </div>
-        {error && (
+        {error && !change && (
           <p className="feedback error" role="alert">
             {error}
           </p>
@@ -117,14 +127,17 @@ export default function Access() {
           <>
             <div className="access-actions">
               <a href="/dashboard">Dashboard</a>
-              <a href="/classes">Kelas & mentor</a>
+              <a href="/classes">Kelas & Tutor</a>
             </div>
+            <nav className="access-tabs" aria-label="Pengelolaan akses">
+              {[["accounts", "Akun pengguna"], ["tutors", "Tutor & pendaftaran"], ["audit", "Riwayat akses"]].map(([key, label]) => <button key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>)}
+            </nav>
+            {section === "accounts" && <section aria-label="Akun pengguna">
             <p className="access-help">
               Akun baru menunggu persetujuan. Akses belajar berlaku untuk
               siswa dan tutor; penugasan tutor diatur per kelas. Persetujuan
               akun tidak memberikan izin mengelola course.
             </p>
-            <TutorManagement users={data.users} onChanged={load} />
             <div className="access-controls">
               <label>
                 Cari nama akun
@@ -155,7 +168,7 @@ export default function Access() {
                 <article className="access-card" key={u.id}>
                   <div>
                     <h2>{u.name}</h2>
-                    <small>ID {u.id}</small>
+                    <details className="access-account-detail"><summary>Detail akun</summary><small>ID akun: {u.id}</small></details>
                     <p>
                       {u.role === "owner"
                         ? "Super Admin"
@@ -172,7 +185,8 @@ export default function Access() {
                       <button
                         className="secondary"
                         disabled={busy}
-                        onClick={() => {
+                        onClick={(e) => {
+                          changeOpener.current = e.currentTarget;
                           setChange({
                             user: u,
                             status:
@@ -194,6 +208,9 @@ export default function Access() {
               ))}
             </div>
             {!rows.length && <p>Tidak ada akun dengan filter ini.</p>}
+            </section>}
+            {section === "tutors" && <TutorManagement users={data.users} onChanged={load} />}
+            <dialog ref={changeDialog} className="access-dialog" aria-labelledby="access-change-title" onCancel={() => setChange(null)}>
             {change && (
               <form
                 className="access-card access-change"
@@ -219,18 +236,19 @@ export default function Access() {
                   }
                 }}
               >
-                <h2>
+                <h2 id="access-change-title">
                   {change.status === "active" ? "Aktifkan" : "Tangguhkan"} akses{" "}
                   {change.user.name}
                 </h2>
                 <p>
                   {change.status === "active"
-                    ? "Akun dapat membaca materi dan menggunakan fitur belajar. Akses mentor tetap mengikuti penugasan kelas."
+                    ? "Akun dapat membaca materi dan menggunakan fitur belajar. Akses Tutor tetap mengikuti penugasan kelas."
                     : "Permintaan belajar berikutnya ditolak hingga akses dipulihkan. Keanggotaan kelas, progres, dan kiriman tetap disimpan."}
                 </p>
                 <label>
                   Alasan perubahan akses
                   <textarea
+                    autoFocus
                     required
                     rows={3}
                     maxLength={1000}
@@ -238,6 +256,7 @@ export default function Access() {
                     onChange={(e) => setReason(e.target.value)}
                   />
                 </label>
+                {error && <p className="feedback error" role="alert">{error}</p>}
                 <div className="access-actions">
                   <button className="primary" disabled={busy}>
                     Simpan perubahan akses
@@ -253,10 +272,11 @@ export default function Access() {
                 </div>
               </form>
             )}
-            <section className="access-audit">
+            </dialog>
+            {section === "audit" && <section className="access-audit">
               <h2>Riwayat perubahan akses</h2>
               <p className="access-help">
-                100 perubahan terbaru. Riwayat hanya tersedia untuk pemilik.
+                100 perubahan terbaru. Riwayat hanya tersedia untuk Super Admin.
               </p>
               {!data.events.length && <p>Belum ada perubahan akses.</p>}
               {data.events.map((e: any) => (
@@ -270,7 +290,7 @@ export default function Access() {
                   </small>
                 </article>
               ))}
-            </section>
+            </section>}
           </>
         )}
       </main>

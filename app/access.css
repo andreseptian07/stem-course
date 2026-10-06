@@ -144,3 +144,25 @@
     padding: 20px;
   }
 }
+.access-tabs { display:flex; flex-wrap:wrap; gap:8px; margin:24px 0; padding:6px; background:#e8efed; border-radius:12px; }
+.access-tabs button { flex:1; min-height:44px; color:#526a63; }
+.access-tabs button[aria-pressed="true"] { background:#fff; color:#096b64; box-shadow:0 2px 6px #173b4110; }
+.access-dialog { width:min(560px,calc(100% - 32px)); max-height:calc(100dvh - 48px); margin:auto; padding:0; border:0; border-radius:16px; color:var(--ink); box-shadow:0 24px 80px #142b3530; }
+.access-dialog::backdrop { background:#142b3580; }
+.access-dialog .access-card { margin:0; border:0; padding:28px; }
+.access-dialog label { display:grid; gap:10px; font-size:14px; }
+.access-dialog textarea { width:100%; border:1px solid #cfdddd; padding:12px; border-radius:8px; font:inherit; resize:vertical; }
+.access-dialog .feedback { display:block; }
+.access-dialog .access-actions { margin-bottom:0; }
+.access-main input, .access-main select, .access-main textarea { font-size:16px; }
+.access-actions > button, .access-actions > a { min-height:44px; }
+.access-actions > a { display:inline-flex; align-items:center; text-decoration:underline; text-underline-offset:4px; }
+@media(max-width:540px) { .access-tabs { display:grid; grid-template-columns:1fr; } .access-main { padding:26px 16px; } .access-dialog .access-card { padding:22px; } }
+.access-account-detail { font-size:13px; color:#526a63; margin:6px 0; }
+.access-account-detail summary, .tutor-revoke summary { cursor:pointer; min-height:44px; padding:10px 0; }
+.tutor-revoke { background:white; border:1px solid var(--line); border-radius:12px; padding:8px 24px; margin-top:20px; }
+.tutor-revoke summary { color:#923d34; font-weight:600; }
+.tutor-revoke .access-card { padding:16px 0; border:0; margin:0; }
+.danger-button { background:#fff1ee; color:#923d34; border:1px solid #ecc9c4; min-height:44px; }
+.danger-button:hover:not(:disabled) { background:#f9e4df; }
+.access-dialog p { font-size:14px; }

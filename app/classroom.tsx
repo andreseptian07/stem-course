@@ -5,6 +5,9 @@ import {
   LayoutDashboard,
   UserRound,
   Users,
+  Menu,
+  ChevronDown,
+  LogOut,
   BookOpen,
   CalendarDays,
   Settings2,
@@ -85,6 +88,7 @@ const local = (s: string | null) => {
 };
 const iso = (s: string) => (s ? new Date(s + ":00+07:00").toISOString() : null);
 export default function Classes() {
+  const [mobileMenu, setMobileMenu] = useState(false);
   const [data, setData] = useState<any>(null),
     [detail, setDetail] = useState<any>(null),
     [id, setId] = useState(""),
@@ -292,12 +296,13 @@ export default function Classes() {
         <a href="/courses" onClick={guard}>
           Jelajahi course
         </a>
-        <div className="account-user">{data?.user.name || "Akun saya"}</div>
+        <a className="account-user" href="/profile" aria-label="Buka profil saya" onClick={guard}><span className="account-avatar teal"><UserRound size={19} /></span><span>{data?.user.name || "Akun saya"}</span></a>
       </header>
       <div className="account-layout">
-        <aside className="account-sidebar">
+        <aside className={`account-sidebar ${mobileMenu ? "mobile-nav-open" : ""}`}>
           <span className="eyebrow">BELAJAR BERSAMA</span>
-          <nav aria-label="Navigasi akun">
+          <button type="button" className="account-menu-toggle" aria-expanded={mobileMenu} aria-controls="account-navigation" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={19} />Menu akun<ChevronDown size={17} /></button>
+          <nav id="account-navigation" aria-label="Navigasi akun">
             <a href="/dashboard" onClick={guard}>
               <LayoutDashboard size={19} />
               Dashboard
@@ -306,13 +311,13 @@ export default function Classes() {
               <UserRound size={19} />
               Profil saya
             </a>
-            <a className="selected" href="/classes" onClick={guard}>
+            <a className="selected" aria-current="page" href="/classes" onClick={guard}>
               <Users size={19} />
-              Kelas & mentor
+              Kelas & Tutor
             </a>
             <a href="/learn?view=sessions" onClick={guard}>
               <CalendarDays size={19} />
-              Sesi mentor
+              Sesi Tutor
             </a>
             <a href="/access" onClick={guard}>
               <Users size={19} />
@@ -328,13 +333,14 @@ export default function Classes() {
                 Kelola course
               </a>
             )}
+            <a className="account-mobile-logout" href="/logout" onClick={guard}><LogOut size={19} />Keluar</a>
           </nav>
         </aside>
         <main className="account-main classes-main" id="classes-main">
           <div className="account-page-heading">
             <div>
               <div className="eyebrow teal">KELAS & PENDAMPINGAN</div>
-              <h1>{c ? c.name : "Belajar bersama mentor"}</h1>
+              <h1>{c ? c.name : "Belajar bersama Tutor"}</h1>
               <p>
                 {c
                   ? c.courseTitle

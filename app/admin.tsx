@@ -204,7 +204,7 @@ export default function Admin({
     <main className="admin-page">
       <div className="admin-heading">
         <div>
-          <div className="eyebrow teal">WORKSPACE PENGAJAR</div>
+          <div className="eyebrow teal">EDITOR COURSE</div>
           <h1>Kelola pengalaman belajar</h1>
           <p>Susun materi, tentukan capaian, dan dampingi prosesnya.</p>
         </div>
@@ -220,8 +220,8 @@ export default function Admin({
       <div className="admin-tabs">
         {[
           ["content", "Konten & kurikulum", Layers3],
-          ["sessions", "Sesi mentor", CalendarDays],
-          ["progress", "Progres peserta", Users],
+          ["sessions", "Sesi Tutor", CalendarDays],
+          ["progress", "Progres siswa", Users],
           ["integration", "Pemeriksa kode", Code2],
         ].map(([key, label, Icon]: any) => (
           <button

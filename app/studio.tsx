@@ -10,6 +10,7 @@ import {
   LockKeyhole,
   CirclePlay,
   PanelLeft,
+  X,
   Layers3,
   CircuitBoard,
   Clock3,
@@ -62,6 +63,8 @@ export function localDate(value: string) {
   );
 }
 export default function Studio() {
+  const outlineToggle = useRef<HTMLButtonElement>(null);
+  const outlineClose = useRef<HTMLButtonElement>(null);
   const [state, setState] = useState<State | null>(null),
     [failure, setFailure] = useState(""),
     [signIn, setSignIn] = useState(false),
@@ -91,6 +94,13 @@ export default function Studio() {
     if (q.get("view") === "sessions" || q.get("view") === "admin")
       setView(q.get("view")!);
   }, [load]);
+  useEffect(() => {
+    if (!mobile) return;
+    outlineClose.current?.focus();
+    const close = (e: KeyboardEvent) => { if (e.key === "Escape") setMobile(false); };
+    window.addEventListener("keydown", close);
+    return () => { window.removeEventListener("keydown", close); outlineToggle.current?.focus(); };
+  }, [mobile]);
   const course =
     state?.courses.find((c) => c.id === courseId) || state?.courses[0];
   const lesson =
@@ -192,10 +202,10 @@ export default function Studio() {
             STEM<span>studio</span>
           </strong>
         </a>
-        <nav>
+        <nav aria-label="Navigasi ruang belajar">
           {[
             ["learn", "Ruang belajar", BookOpen],
-            ["sessions", "Sesi mentor", CalendarDays],
+            ["sessions", "Sesi Tutor", CalendarDays],
             ...(state?.user.role === "owner"
               ? [["admin", "Kelola course", Settings2]]
               : []),
@@ -203,6 +213,7 @@ export default function Studio() {
             <button
               key={key}
               aria-label={label}
+              aria-pressed={view === key}
               className={view === key ? "active" : ""}
               onClick={() => {
                 if (
@@ -286,7 +297,7 @@ export default function Studio() {
       ) : view === "sessions" ? (
         <main className="full-page">
           <div className="eyebrow teal">BELAJAR BERSAMA</div>
-          <h1>Sesi bersama mentor</h1>
+          <h1>Sesi bersama Tutor</h1>
           <p>Ruang untuk bertanya, membahas proyek, dan berlatih bersama.</p>
           <SessionList
             sessions={state.sessions}
@@ -307,9 +318,9 @@ export default function Studio() {
         </main>
       ) : (
         <div className="workspace">
-          <aside className={`outline ${mobile ? "mobile-open" : ""}`}>
+          <aside id="lesson-outline" className={`outline ${mobile ? "mobile-open" : ""}`}><button ref={outlineClose} className="outline-close" type="button" onClick={() => setMobile(false)}><X size={18} />Tutup daftar materi</button>
             <div className="eyebrow">
-              LEARNING PATH / {course.category.toUpperCase()}
+              JALUR BELAJAR / {course.category.toUpperCase()}
             </div>
             {state.courses.length > 1 ? (
               <select
@@ -394,7 +405,10 @@ export default function Studio() {
             <div className="lesson-toolbar">
               <button
                 className="icon-button"
-                aria-label="Buka daftar materi"
+                ref={outlineToggle}
+                aria-label={mobile ? "Tutup daftar materi" : "Buka daftar materi"}
+                aria-expanded={mobile}
+                aria-controls="lesson-outline"
                 onClick={() => setMobile(!mobile)}
               >
                 <PanelLeft size={18} />
