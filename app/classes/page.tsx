@@ -1,5 +1,5 @@
 import Classes from "../classroom";
-import { requireChatGPTUser } from "../chatgpt-auth";
+import { requirePlatformAccess } from "@/lib/browser-access";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Kelas & mentor — STEM Studio" };
 async function Protected({
@@ -9,7 +9,7 @@ async function Protected({
   classId?: string;
   taskId?: string;
 }) {
-  await requireChatGPTUser(
+  await requirePlatformAccess(
     classId
       ? `/classes?class=${encodeURIComponent(classId)}${taskId ? `&task=${encodeURIComponent(taskId)}` : ""}`
       : "/classes",

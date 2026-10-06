@@ -1,8 +1,8 @@
 import Account from "../account";
-import { requireChatGPTUser } from "../chatgpt-auth";
+import { requirePlatformAccess } from "@/lib/browser-access";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Profil saya — STEM Studio" };
 export default async function Page() {
-  await requireChatGPTUser("/profile");
+  await requirePlatformAccess("/profile");
   return <Account view="profile" />;
 }

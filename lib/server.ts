@@ -5,14 +5,12 @@ import { sampleCourse } from "./seed";
 import { blockingLesson } from "./rules";
 import { validateConfig } from "./judge";
 import type { JudgeConfig } from "./judge";
-export class AppError extends Error {
-  constructor(
-    public status: number,
-    message: string,
-  ) {
-    super(message);
-  }
-}
+import {
+  AccessError as AppError,
+  registerIdentity,
+  requireActive,
+} from "./access";
+export { AccessError as AppError } from "./access";
 export function db() {
   if (!env.DB)
     throw new AppError(
@@ -45,40 +43,23 @@ export function judgeConfig(): JudgeConfig | null {
     return null;
   }
 }
-export async function identity() {
+export async function identity(allowRestricted = false) {
   const signed = await getChatGPTUser();
   if (!signed)
     throw new AppError(401, "Silakan masuk untuk menyimpan progres belajar.");
   const d = db();
-  // Deployment is initially owner-private. Bootstrap can only be enabled by a server operator.
-  if (config().OWNER_SETUP_ENABLED === "true")
-    await d
-      .prepare("INSERT OR IGNORE INTO settings (key,value) VALUES ('owner',?)")
-      .bind(signed.userId)
-      .run();
-  const owner = await d
-    .prepare("SELECT value FROM settings WHERE key='owner'")
-    .first<{ value: string }>();
-  const role = owner?.value === signed.userId ? "owner" : "student";
-  const profile = await d
-    .prepare("SELECT data FROM profiles WHERE user_id=?")
-    .bind(signed.userId)
-    .first<{ data: string }>();
-  const name = profile
-    ? JSON.parse(profile.data).displayName || signed.displayName
-    : signed.displayName;
-  await d
-    .prepare(
-      "INSERT INTO users(id,name,role) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name,role=excluded.role",
-    )
-    .bind(signed.userId, name, role)
-    .run();
-  if (role === "owner")
+  const u = await registerIdentity(
+    d,
+    signed,
+    config().OWNER_SETUP_ENABLED === "true",
+  );
+  if (!allowRestricted) requireActive(u);
+  if (u.role === "owner")
     await d
       .prepare("INSERT OR IGNORE INTO courses(id,data,version) VALUES(?,?,1)")
       .bind(sampleCourse.id, JSON.stringify(sampleCourse))
       .run();
-  return { id: signed.userId, name, role };
+  return u;
 }
 export function owner(user: { role: string }) {
   if (user.role !== "owner")

@@ -1,0 +1,140 @@
+.access-shell {
+  min-height: 100vh;
+  background: #f5f8f8;
+  color: #223b37;
+  font-family: Arial, sans-serif;
+}
+.access-main {
+  max-width: 1040px;
+  padding: 45px 30px;
+  margin: auto;
+}
+.access-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  margin-bottom: 25px;
+}
+.access-heading h1 {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 30px;
+  margin: 10px 0;
+}
+.access-heading button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.access-help {
+  font-size: 16px;
+  color: #617873;
+  line-height: 1.7;
+}
+.access-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin: 18px 0;
+}
+.access-actions a {
+  color: #397a70;
+}
+.access-controls {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+  margin: 25px 0;
+}
+.access-main label {
+  display: grid;
+  gap: 10px;
+  font-size: 14px;
+}
+.access-main input,
+.access-main select,
+.access-main textarea {
+  border: 1px solid #dbe5e2;
+  border-radius: 8px;
+  padding: 12px;
+  font: inherit;
+  background: white;
+  color: inherit;
+  min-width: 0;
+  width: 100%;
+}
+.access-card {
+  background: white;
+  border: 1px solid #dfe8e5;
+  border-radius: 12px;
+  padding: 24px;
+  margin: 16px 0;
+  overflow-wrap: anywhere;
+}
+.access-users .access-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.access-card h2 {
+  font-size: 20px;
+  margin: 0 0 12px;
+}
+.access-card p {
+  font-size: 16px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+.access-card small {
+  font-size: 14px;
+  color: #617873;
+}
+.access-status {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  background: #f1f4f3;
+  color: #526660;
+}
+.access-status.active {
+  background: #e9f5ef;
+  color: #2b7259;
+}
+.access-status.pending {
+  background: #fff4df;
+  color: #87601f;
+}
+.access-status.suspended {
+  background: #fcefee;
+  color: #9a4944;
+}
+.access-change {
+  border: 2px solid #397a70;
+}
+.access-audit {
+  margin-top: 40px;
+}
+@media (max-width: 760px) {
+  .access-main {
+    padding: 25px 20px;
+  }
+  .access-heading,
+  .access-users .access-card {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .access-controls {
+    grid-template-columns: 1fr;
+  }
+  .access-heading h1 {
+    font-size: 25px;
+  }
+  .access-card {
+    padding: 20px;
+  }
+}

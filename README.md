@@ -38,9 +38,11 @@ Skema: `db/schema.ts`. Migrasi awal: `drizzle/0000_previous_toxin.sql`. Untuk pe
 
 ## Autentikasi dan admin pertama
 
+Pengelolaan akses tersedia di `/access`: akun baru menunggu persetujuan, pemilik menyetujui/menangguhkan/memulihkan dengan alasan, dan audit dicatat secara atomik. Pemilik dilindungi dari penangguhan diri; mentor tetap terbatas pada penugasan kelas. Akun lama selain pemilik memerlukan persetujuan ulang. API belajar memeriksa akun aktif; halaman browser yang dibatasi mengarahkan akun belum aktif ke halaman status. Lihat [panduan akses dan keamanan](docs/Access-Users-Security.md) untuk alur mengundang viewer Site, batas penangguhan dan verifikasi multiakun.
+
 Versi awal diterbitkan privat untuk pemilik melalui Sites dengan Sign in with ChatGPT. Header identitas hanya tepercaya di belakang gateway autentikasi Sites; jangan mengekspos Worker langsung ke internet tanpa gateway yang menghapus header identitas dari klien.
 
-`OWNER_SETUP_ENABLED=true` digunakan hanya pada deployment privat awal. Pengguna pertama yang terautentikasi disimpan sebagai owner secara atomik di tabel settings. Setelah pemilik berhasil masuk, operator sebaiknya mengubah flag menjadi `false` sebelum memperluas akses. Owner tetap tersimpan walaupun flag dimatikan. Penugasan mentor atau persetujuan peserta kelas tidak memberikan izin akses Site: akun lain perlu mendapat akses Site dan masuk dahulu sebelum muncul pada pilihan akun kelas. Site saat ini tetap privat untuk pemilik. Akses peserta umum, onboarding komersial, pembayaran, sertifikat, peran mentor global untuk authoring course, backup/restore operasional, moderasi, dan load test belum menjadi bagian MVP ini.
+`OWNER_SETUP_ENABLED=true` digunakan hanya pada deployment privat awal. Pengguna pertama yang terautentikasi disimpan sebagai owner secara atomik di tabel settings. Penanda `owner_setup_closed` menutup bootstrap permanen setelah pemilik tersimpan. Setelah pemilik berhasil masuk, operator sebaiknya mengubah flag menjadi `false` sebelum memperluas akses. Owner tetap tersimpan walaupun flag dimatikan. Penugasan mentor atau persetujuan peserta kelas tidak memberikan izin akses Site: akun lain perlu mendapat akses Site dan masuk dahulu sebelum muncul pada pilihan akun kelas. Site saat ini tetap privat untuk pemilik. Akses peserta umum, onboarding komersial, pembayaran, sertifikat, peran mentor global untuk authoring course, backup/restore operasional, moderasi, dan load test belum menjadi bagian MVP ini.
 
 ## Mengaktifkan pemeriksaan kode
 
@@ -55,7 +57,7 @@ Tanpa endpoint, hanya tombol penilaian resmi dinonaktifkan; latihan browser teta
 
 ```sh
 npx tsc --noEmit
-node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs
+node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/access.test.mjs
 npm run build
 ```
 

@@ -314,6 +314,10 @@ export default function Classes() {
               <CalendarDays size={19} />
               Sesi mentor
             </a>
+            <a href="/access" onClick={guard}>
+              <Users size={19} />
+              {owner ? "Kelola akses" : "Akses akun"}
+            </a>
             <a href="/courses" onClick={guard}>
               <BookOpen size={19} />
               Katalog course

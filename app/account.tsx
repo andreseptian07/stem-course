@@ -223,6 +223,10 @@ export default function Account({
               <Users size={19} />
               Kelas & mentor
             </a>
+            <a href="/access" onClick={guard}>
+              <Users size={19} />
+              {data?.user.role === "owner" ? "Kelola akses" : "Akses akun"}
+            </a>
             <a href="/learn?view=sessions" onClick={guard}>
               <CalendarDays size={19} />
               Sesi mentor

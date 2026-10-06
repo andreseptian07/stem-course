@@ -140,7 +140,11 @@ export async function listClasses(d: D1Database, u: ClassUser) {
   };
   if (u.role === "owner") {
     data.users = (
-      await d.prepare("SELECT id,name FROM users ORDER BY name").all()
+      await d
+        .prepare(
+          "SELECT u.id,u.name FROM users u JOIN user_access a ON a.user_id=u.id AND a.status='active' ORDER BY u.name",
+        )
+        .all()
     ).results;
     data.courses = (
       await d
@@ -256,13 +260,15 @@ export async function saveClass(d: D1Database, u: ClassUser, form: unknown) {
   if (
     c.mentorId &&
     !(await d
-      .prepare("SELECT id FROM users WHERE id=?")
+      .prepare(
+        "SELECT u.id FROM users u JOIN user_access a ON a.user_id=u.id AND a.status='active' WHERE u.id=?",
+      )
       .bind(c.mentorId)
       .first())
   )
     throw new ClassError(
       400,
-      "Mentor perlu masuk ke platform terlebih dahulu.",
+      "Akun mentor perlu mendapat persetujuan akses terlebih dahulu.",
     );
   const old = await d
     .prepare("SELECT course_id,version FROM cohorts WHERE id=?")
@@ -361,7 +367,13 @@ export async function setMembership(
       "Kelas diarsipkan. Aktifkan kembali sebelum mengubah peserta.",
     );
   if (
-    !(await d.prepare("SELECT id FROM users WHERE id=?").bind(userId).first())
+    status === "approved" &&
+    !(await d
+      .prepare(
+        "SELECT u.id FROM users u JOIN user_access a ON a.user_id=u.id AND a.status='active' WHERE u.id=?",
+      )
+      .bind(userId)
+      .first())
   )
     throw new ClassError(404, "Akun peserta tidak ditemukan.");
   if (status === "approved") {

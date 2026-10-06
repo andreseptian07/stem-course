@@ -1,9 +1,9 @@
 import Account from "../account";
-import { requireChatGPTUser } from "../chatgpt-auth";
+import { requirePlatformAccess } from "@/lib/browser-access";
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Dashboard peserta — STEM Studio" };
 async function Protected({ join }: { join?: string }) {
-  await requireChatGPTUser(
+  await requirePlatformAccess(
     join ? `/dashboard?join=${encodeURIComponent(join)}` : "/dashboard",
   );
   return <Account view="dashboard" join={join} />;

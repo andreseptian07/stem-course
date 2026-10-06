@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   try {
     const signed = await getChatGPTUser();
-    const user = signed ? await identity() : null;
+    const user = signed ? await identity(true) : null;
     const rows = (
       await db()
         .prepare(

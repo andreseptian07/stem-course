@@ -223,3 +223,23 @@ export const projectSubmissions = sqliteTable(
     ),
   ],
 );
+
+export const userAccess = sqliteTable("user_access", {
+  userId: text("user_id").primaryKey(),
+  status: text("status").notNull().default("pending"),
+  version: integer("version").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+export const accessEvents = sqliteTable(
+  "access_events",
+  {
+    id: text("id").primaryKey(),
+    actorId: text("actor_id").notNull(),
+    targetId: text("target_id").notNull(),
+    status: text("status").notNull(),
+    reason: text("reason").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("access_events_time").on(t.createdAt)],
+);

@@ -69,6 +69,12 @@ function setup() {
     sql
       .prepare("INSERT INTO users(id,name,role) VALUES(?,?,?)")
       .run(u.id, u.name, u.role);
+  for (const u of Object.values(users))
+    sql
+      .prepare(
+        "INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'active',1,'2026-01-01','2026-01-01')",
+      )
+      .run(u.id);
   sql
     .prepare("INSERT INTO courses(id,data,version) VALUES(?,?,1)")
     .run(sampleCourse.id, JSON.stringify(sampleCourse));
