@@ -52,23 +52,23 @@ Pada database kosong yang dibuat khusus untuk platform, jalankan:
 npm run db:migrate:mariadb -- --apply
 ```
 
-Perintah membuat 19 tabel platform dan satu tabel riwayat migrasi. Tidak membuat database baru, tidak mengimpor data D1, tidak mengisi akun owner, dan tidak menghapus data. Nama database mengikuti `DB_NAME`. Tidak ada data atau akun uji CI yang dipindahkan ke Hostinger.
+Instalasi baru membuat 22 tabel aplikasi dan satu tabel riwayat migrasi. Migrasi pertama membuat 19 tabel bisnis; migrasi kedua menambahkan 3 tabel autentikasi. Tidak membuat database baru, tidak mengimpor data D1, tidak mengisi akun owner, dan tidak menghapus data. Nama database mengikuti `DB_NAME`. Tidak ada data atau akun uji CI yang dipindahkan ke Hostinger.
 
 Runner memakai lock pada database agar dua proses tidak menjalankan migrasi bersamaan, memeriksa hash migrasi yang sudah diterapkan, dan menolak database yang sudah berisi tabel tanpa riwayat STEM. Pengulangan setelah migrasi sukses tidak mengulang pembuatan tabel. Jangan mengedit SQL migrasi yang sudah diterapkan; buat migrasi baru untuk perubahan skema.
 
 DDL MariaDB dapat melakukan commit implisit. Jika penerapan gagal di tengah jalan, sebagian tabel dapat tertinggal. Runner tidak menghapusnya atau berpura-pura rollback; tinjau hasil dan backup sebelum perbaikan. Untuk database yang sudah berisi data, lakukan backup dan uji migrasi di salinan terlebih dahulu.
 
-SQL ada di `mariadb/0000_big_captain_marvel.sql`. Jalankan melalui runner agar riwayat tercatat; mengimpor file SQL langsung lewat phpMyAdmin tidak membuat riwayat runner. Migrasi D1 pada folder `drizzle/` tetap terpisah.
+SQL ada di `mariadb/0000_big_captain_marvel.sql` dan `mariadb/0001_sharp_vin_gonzales.sql`. Jalankan melalui runner agar riwayat tercatat; mengimpor file SQL langsung lewat phpMyAdmin tidak membuat riwayat runner. Migrasi D1 pada folder `drizzle/` tetap terpisah.
 
 ## Status integrasi aplikasi
 
-Sudah disiapkan: driver `mysql2`, konfigurasi koneksi Node.js, skema Drizzle MariaDB, SQL migrasi, pengecekan koneksi, pengelolaan migrasi, dan pengujian CI pada database sementara.
+Sudah disiapkan: driver `mysql2`, konfigurasi koneksi Node.js, skema Drizzle MariaDB (22 tabel aplikasi), SQL migrasi, pengecekan koneksi, pengelolaan migrasi, dan pengujian CI pada database sementara.
 
-**Aplikasi utama masih memakai D1.** Modul `db/mariadb.ts` belum menjadi pengganti `lib/server.ts` atau API peserta. Query akses akun, course, profil, enrollment, progres/kuis, sesi/RSVP, kelas/mentor, tugas/review, dan percobaan coding sudah memakai antarmuka bersama `lib/database.ts`, dengan varian D1 dan MariaDB. Query bisnis course/akun/sesi dipisahkan ke `lib/course-data.ts`, `lib/account-data.ts`, dan `lib/session-data.ts`, sehingga dapat diuji tanpa runtime Cloudflare. Modul MariaDB menyediakan adapter `database` selain pool dan ORM; query dipilih secara eksplisit, bukan diterjemahkan melalui regex saat dijalankan.
+**Aplikasi utama sekarang memakai MariaDB pada Node.js.** `lib/server.ts` menggunakan `db/runtime.ts`, yang mempertahankan satu pool/adapter dari `db/mariadb.ts` per proses. Query akses akun, course, profil, enrollment, progres/kuis, sesi/RSVP, kelas/mentor, tugas/review, dan percobaan coding sudah memakai antarmuka bersama `lib/database.ts`, dengan varian D1 dan MariaDB. Query bisnis course/akun/sesi dipisahkan ke `lib/course-data.ts`, `lib/account-data.ts`, dan `lib/session-data.ts`, sehingga dapat diuji tanpa runtime Cloudflare. Modul MariaDB menyediakan adapter `database` selain pool dan ORM; query dipilih secara eksplisit, bukan diterjemahkan melalui regex saat dijalankan.
 
 Adapter menggunakan prepared statements, transaksi untuk batch, dan named lock per database untuk mempertahankan serialisasi penulisan D1. Insert duplikat yang tidak mengubah data melaporkan nol, sehingga konflik versi dan audit tetap dapat dikenali. Koneksi dengan kegagalan rollback atau pelepasan lock tidak dikembalikan ke pool. Serialisasi ini merupakan pilihan awal untuk menjaga aturan akses/kuota; skalabilitas penulisan perlu ditinjau sebelum trafik besar.
 
-Autentikasi dan runtime produksi Node.js masih perlu dipindahkan sebelum API benar-benar memakai MariaDB. Mengisi password saja belum menyelesaikan migrasi platform. Jangan membuat pool baru pada setiap request; runtime Node berikutnya harus mempertahankan satu adapter/pool yang sama.
+Runtime produksi Next.js/Node.js, autentikasi email/password dan pool MariaDB sudah terintegrasi. Isi environment, terapkan migrasi, lalu buat owner melalui `npm run auth:admin -- create-owner`. API tidak menjalankan migrasi atau membuat owner otomatis. Pool tetap tidak dibuat ulang per request.
 
 Pengujian integrasi memakai service MariaDB 10.11 di GitHub Actions. Selain foundation dan akses akun, skenario yang sama dijalankan pada SQLite dan MariaDB untuk memastikan privasi draft, konflik profil, kuota kuis paralel, rollback hasil kuis, revisi progres, kapasitas RSVP/kelas, feedback pribadi, review tugas terbaru, pencabutan keanggotaan, dan pengembalian kuota coding. Kuota kuis dan hasil tersimpan dalam satu transaksi; persetujuan kelas dan enrollment juga satu transaksi.
 
@@ -76,4 +76,4 @@ MariaDB tidak memiliki `rowid`: daftar course diurutkan menurut ID, dan pesan de
 
 Koneksi ke database Hostinger belum diverifikasi karena password diisi manual oleh pengguna. Hasil pengujian CI tidak membuktikan hostname, izin akun, TLS atau jaringan Hostinger sudah benar.
 
-Implementasi database Node.js tidak diimpor oleh halaman browser maupun runtime Site saat ini. Pengujian CI tidak menggunakan password atau server Hostinger; fixture hanya boleh berjalan pada host `127.0.0.1` dengan nama database `stem_ci`.
+Implementasi database Node.js hanya diimpor modul server, bukan halaman browser. Runtime Site lama tidak menjadi target build ini. Pengujian CI tidak menggunakan password atau server Hostinger; fixture hanya boleh berjalan pada host `127.0.0.1` dengan nama database `stem_ci`.

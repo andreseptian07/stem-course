@@ -12,6 +12,6 @@ Alur unggahan dan verifikasi:
 2. Gunakan remote HTTPS ke repository yang sama, dengan credential helper GitHub CLI pada checkout ini, karena SSH key sebelumnya tetap milik `and0789`.
 3. Unggah `main` tanpa force push. Bila repository sudah memperoleh commit lain, fetch dan tinjau dahulu; jangan menimpa riwayat.
 4. Periksa GitHub Actions: tes tipe/unit dan service MariaDB sementara. Workflow tidak mengakses database Hostinger.
-5. Koneksi deployment Hostinger baru dilakukan setelah runtime Node.js, autentikasi dan query aplikasi selesai dipindahkan.
+5. Runtime Node.js, autentikasi dan query MariaDB sudah tersedia. Hubungkan deployment Hostinger setelah CI berhasil dan environment/tabel/owner disiapkan sesuai panduan deployment.
 
 Jangan commit `.env.local`, `.dev.vars`, password, atau metadata koneksi IDE. CI hanya memakai kredensial untuk database CI sementara.

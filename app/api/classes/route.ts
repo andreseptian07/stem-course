@@ -1,3 +1,4 @@
+import { readRequestText } from "@/lib/request-body";
 import { checkAuthOrigin } from "@/lib/auth-policy";
 import { z } from "zod";
 import { identity, db, json, AppError } from "@/lib/server";
@@ -46,7 +47,7 @@ export async function POST(req: Request) {
       throw new ClassError(415, "Gunakan JSON.");
     if (Number(req.headers.get("content-length") || 0) > 20000)
       throw new ClassError(413, "Isian terlalu besar.");
-    const raw = await req.text();
+    const raw = await readRequestText(req, 20000);
     if (raw.length > 20000) throw new ClassError(413, "Isian terlalu besar.");
     let data;
     try {

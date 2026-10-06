@@ -1,76 +1,110 @@
-# Migrasi STEM Studio ke Hostinger
+# Deploy STEM Studio ke Hostinger
 
-Target: `https://course.ypi-baitussalam.or.id`. Pengguna sudah mengonfirmasi paket Web/Cloud Hosting dengan fitur Node.js. Hosting website utama dan platform course harus menjadi aplikasi terpisah.
+Target: `https://course.ypi-baitussalam.or.id`, pada paket Web/Cloud dengan Node.js yang sudah dimiliki. Website utama tetap menjadi aplikasi terpisah.
 
-## Status saat panduan dibuat
+## Status source
 
-- Source tersedia di checkout `platform`; pemeriksaan TypeScript dan unit test disediakan melalui `npm run check`.
-- `.github/workflows/ci.yml` menjalankan pemeriksaan pada push dan pull request. Tidak menggunakan secret hosting dan tidak mengubah database.
-- Runtime sekarang masih Vinext/Cloudflare Workers, database D1, dan autentikasi Sites. **Belum siap dideploy langsung sebagai aplikasi Node.js di Hostinger.**
-- `npm start` sekarang menjalankan Wrangler lokal. Jangan gunakan perintah tersebut untuk server produksi Hostinger.
-- CI belum memeriksa build Node produksi atau melakukan CD. Koneksi deployment Hostinger, DNS subdomain, SSL, dan pengujian multiakun belum dilakukan.
-- Pengguna sudah membuat database MariaDB. Koneksi Node.js, skema dan migrasi awal disiapkan terpisah; lihat [konfigurasi MariaDB dan tempat mengisi password](Configure-MariaDB.md). Port query bisnis sudah disiapkan dan diuji melalui adapter bersama. Koneksi hosting belum diuji dan API utama belum memakai MariaDB.
+Source sekarang menjalankan **Next.js pada Node.js**, memakai MariaDB dan login email/password sendiri. `npm run build` membuat build Next.js produksi; `npm start` menjalankan server Node. Pool MariaDB dipertahankan per proses. Header identitas Sites/ChatGPT tidak digunakan sebagai login.
 
-## Rancangan migrasi
+GitHub Actions memeriksa tipe, tes unit, build Node, migrasi/query pada MariaDB 10.11 sementara, autentikasi, dan alur HTTP produksi. CI tidak memakai server/password Hostinger dan belum menjadi job deployment. Tampilan Site lama tidak berubah sampai ada deployment ke hosting yang dituju.
 
-1. Pertahankan antarmuka TypeScript/React dan fitur course, kuis, kelas, tugas, serta pembatasan akses.
-2. Port runtime ke Next.js pada Node.js, termasuk middleware, routing, konfigurasi build, environment dan assets runner browser. Kesesuaian routing Vinext harus diuji; mengganti perintah build saja tidak cukup.
-3. Gunakan MariaDB yang sudah dibuat pada Hostinger. Foundation koneksi/skema dan port query bisnis tersedia; integrasi pool MariaDB ke runtime Node masih diperlukan. Database harus persisten dan terpisah dari direktori deployment aplikasi.
-4. Ganti Sign in with ChatGPT milik Sites dengan autentikasi web dan sesi yang diverifikasi server. Opsi awal: provider autentikasi terkelola. Terapkan cookie aman, validasi origin/CSRF, pembatasan percobaan login, dan alur pendaftaran peserta.
-5. Pertahankan persetujuan akun dan mentor per kelas. Buat owner melalui identitas operator yang ditetapkan, bukan pengunjung publik pertama.
-6. Header `oai-authenticated-user-*` dari browser tidak boleh menjadi identitas di Hostinger. Mock login hanya untuk localhost.
-7. Port migrasi database secara terpisah. Jangan mengubah migrasi yang sudah diterapkan pada Site. Tentukan apakah data awal dibuat baru atau diekspor dari D1; pemetaan ID akun harus ditangani karena provider login berubah.
+Database Hostinger, DNS, SSL, dan akun owner nyata belum dikonfigurasi oleh agent. Source siap untuk uji pemasangan setelah konfigurasi berikut diisi. Tidak ada impor otomatis peserta/progres dari D1; perubahan penyedia login menghasilkan ID akun baru. Untuk pemakaian pertama, gunakan database kosong khusus platform. Bila ingin memindahkan data Site lama, lakukan pemetaan akun dan uji import terpisah dahulu.
 
-Target database sudah ditentukan sebagai MariaDB Hostinger, tetapi integrasi penuh belum diimplementasikan. Provider login masih perlu ditentukan. Jangan menyalin data uji lokal sebagai data peserta nyata.
+## 1. Periksa database dan buat tabel
 
-## Repository dan CI
+Pada komputer operator, isi `.env.local` sesuai [panduan MariaDB](Configure-MariaDB.md). Masukkan password hanya pada file lokal yang diabaikan Git atau environment Hostinger. Jalankan dari root source repository, memakai Node.js 22.13 atau lebih baru:
 
-Repository privat disarankan untuk source platform. Repository tidak boleh berisi `.env`, `.dev.vars`, token API, backup database, atau folder `.wrangler`. `.env.example` hanya berisi contoh tanpa secret.
-
-Alur yang dituju:
-
-```text
-branch fitur -> pull request -> CI + build Node -> merge branch deployment
-                                                   |
-                                                   v
-                                Hostinger build -> subdomain course
+```sh
+npm ci --include=dev --include=optional
+npm run db:check
+npm run db:migrate:mariadb -- --apply
 ```
 
-Pada fase migrasi, jangan menghubungkan branch yang masih berisi runtime Sites ke deployment otomatis Hostinger. Setelah port selesai dan diuji, gunakan `main` sebagai branch deployment awal. Pilih branch tersebut pada integrasi Hostinger bila pengaturan tersedia; verifikasi perubahan branch lain tidak memicu deployment.
+`db:check` hanya membaca koneksi/TLS/versi. Jalankan migrasi hanya setelah koneksi benar, pada database khusus yang kosong atau sudah memiliki riwayat migrasi STEM. Instalasi baru membuat 22 tabel aplikasi dan satu tabel riwayat. Migrasi kedua menambahkan kredensial, sesi, dan pembatasan login; migrasi pertama tidak diubah. Database hosting harus MariaDB 10.11 atau lebih baru.
 
-Jadikan hasil CI sebagai syarat merge jika paket GitHub mendukung aturan branch tersebut. Integrasi Hostinger yang otomatis merespons push tidak dengan sendirinya menunggu GitHub Actions. Jika aturan branch tidak tersedia, merge hanya setelah seluruh check berhasil dan gunakan deployment manual untuk rilis yang memerlukan pengawasan.
+Akses dari komputer lokal memerlukan allowlist IP operator pada Remote MySQL. Konfirmasikan hostname dan TLS Hostinger; jangan mematikan pemeriksaan sertifikat untuk mengatasi mismatch IP/hostname. Jika hosting memiliki database dengan data lain, pilih database terpisah atau tinjau backup sebelum migrasi.
 
-Perubahan terlihat di subdomain setelah build dan deployment selesai, bukan setiap kali file diketik. Untuk preview seketika selama coding, gunakan server development lokal.
+## 2. Buat owner secara eksplisit
 
-## Langkah di hPanel setelah port siap
+Setelah tabel tersedia, jalankan pada komputer operator dengan koneksi database yang benar:
 
-1. Buka Websites lalu Create/Add Website dan pilih Web App/Node.js.
-2. Pilih Import Git Repository dan hubungkan akun GitHub. Berikan akses hanya ke repository platform jika pilihan tersedia.
-3. Pilih repository dan branch deployment yang telah lolos pengujian.
-4. Konfigurasikan Node.js, root aplikasi, perintah install/build/start dan output sesuai hasil port yang sudah diverifikasi. Jangan mengisi nilai dari starter Sites sekarang. Jika root repository adalah source platform, gunakan root aplikasi `.`.
-5. Simpan secret database, autentikasi dan URL aplikasi pada environment hosting. Pisahkan dari source GitHub. Sesuaikan URL callback login dengan subdomain HTTPS.
-6. Mulai dengan `JUDGE0_ENABLED=false`. Coding wajib tidak dapat diluluskan tanpa layanan penilaian; jadikan latihan tersebut opsional untuk uji perjalanan course.
-7. Deploy dan periksa log serta URL sementara dari Hostinger terlebih dahulu.
-8. Hubungkan `course.ypi-baitussalam.or.id` sebagai domain aplikasi. Buat record DNS `course` sesuai nilai persis dari hPanel; jangan menebak IP atau mengganti nameserver website utama. Bila sudah ada record `course`, periksa fungsinya sebelum menggantinya.
-9. Aktifkan dan verifikasi SSL, URL callback login, serta redirect HTTPS. Cookie platform harus terbatas pada subdomain course.
+```sh
+npm run auth:admin -- create-owner
+```
 
-Menu hPanel dapat berubah. [Panduan resmi Node.js dan integrasi GitHub Hostinger](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/) menjelaskan paket yang didukung dan langkah deployment.
+Masukkan email, nama pengelola, dan password melalui prompt terminal. Password disembunyikan saat diketik dan tidak menjadi argumen shell. Gunakan frasa unik 15–128 karakter dan simpan di password manager. Owner kedua ditolak. Tidak ada endpoint HTTP yang membuat owner; pengunjung pertama tidak memperoleh akses admin. Perintah tidak perlu dijalankan setiap redeploy.
 
-## Uji penerimaan sebelum peserta masuk
+Pemulihan password, setelah operator memverifikasi pemilik akun secara terpisah:
 
-- Halaman katalog terbuka dan halaman akun/kelas memerlukan login.
-- Akun peserta baru menunggu persetujuan, tidak menjadi owner.
-- Peserta A tidak dapat membaca/mengubah pekerjaan peserta B, termasuk melalui API langsung.
-- Mentor hanya mengakses kelas yang ditugaskan; penangguhan akun mencabut akses.
-- Kuis wajib, revisi materi, progres dan review tugas tetap bekerja.
-- Data bertahan setelah redeploy dan restart; migrasi dijalankan sekali dengan catatan versi.
-- Latihan Python/JavaScript browser diuji pada HTTPS. Penilaian Judge0 tetap nonaktif dan hasil browser tidak membuka materi wajib.
-- Backup database dapat dipulihkan pada database terpisah. Rollback source tidak otomatis membatalkan migrasi data.
+```sh
+npm run auth:admin -- reset-password
+```
 
-## Biaya dan layanan terpisah
+Reset mencabut seluruh sesi akun. Jangan mengirim password ke chat, GitHub, issue, atau screenshot. Bila menjalankan CLI melalui SSH hosting, environment koneksi juga harus tersedia untuk proses terminal tersebut; environment aplikasi belum tentu otomatis masuk ke shell SSH.
 
-Untuk platform web, paket Node.js yang sudah dimiliki dapat digunakan; tidak perlu membeli VPS untuk tahap ini. Biaya/kuota database dan autentikasi perlu diperiksa sesuai penyedia yang akhirnya dipilih. DNS dan SSL mengikuti fasilitas paket/domain milik pengguna.
+## 3. Hubungkan aplikasi Node.js di hPanel
 
-Judge0 tetap terpisah dan opsional. Saat diperlukan, gunakan layanan sandbox atau VPS khusus, bukan proses web utama. Lihat [panduan Judge0](Install-Judge0-VPS.md).
+1. Buka Websites → Create/Add Website → Web App/Node.js → Import Git Repository.
+2. Hubungkan GitHub dan pilih `andreseptian07/stem-course`, branch `main` yang telah lolos CI.
+3. Pilih preset **Next.js**, bukan static frontend. Root repository GitHub sudah merupakan root source, jadi gunakan **`.`**, bukan `platform`.
+4. Gunakan Node.js **22.x** (minimal 22.13), install `npm ci --include=dev --include=optional`, build `npm run build`, dan start `npm start` bila kolom tersebut ditampilkan. Output Next.js adalah `.next`; aplikasi membutuhkan server Node dan dependencies runtime, bukan hanya folder `public`.
+5. Hostinger menyediakan port proses; `next start` membaca `PORT`. Jangan mengunci port development 5173 untuk produksi atau memakai Wrangler/Vinext.
 
-Referensi: [opsi Node.js Hostinger](https://www.hostinger.com/support/node-js-hosting-options-at-hostinger/), [actions/checkout](https://github.com/actions/checkout), [actions/setup-node](https://github.com/actions/setup-node).
+Nama menu dapat berbeda. [Panduan resmi Hostinger](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/) mencantumkan dukungan Next.js backend, Node.js 22, integrasi GitHub, dan pengaturan environment.
+
+## 4. Isi environment aplikasi
+
+Gunakan Environment Variables di hPanel. File `.env.local` tidak ikut GitHub, sehingga konfigurasi lokal tidak otomatis tersedia di hosting.
+
+```dotenv
+APP_URL=https://course.ypi-baitussalam.or.id
+AUTH_REGISTRATION_ENABLED=false
+AUTH_ALLOW_LOCAL_HTTP=false
+DB_HOST=153.92.15.31
+DB_PORT=3306
+DB_USER=u209357671_course_bts
+DB_NAME=u209357671_course_bts
+DB_PASSWORD=ISI_SENDIRI_DI_HPANEL
+DB_POOL_LIMIT=3
+DB_SSL_MODE=required
+JUDGE0_ENABLED=false
+NEXT_TELEMETRY_DISABLED=1
+```
+
+Masukkan setiap nilai hPanel tanpa kutip pembungkus. Isi `DB_SSL_CA_BASE64` jika operator database menyediakan CA khusus. Konfirmasikan nilai `DB_HOST` yang tepat untuk aplikasi Node Hostinger; IP di atas mengikuti informasi pengguna, belum diverifikasi.
+
+`APP_URL` adalah origin HTTPS persis yang dibuka browser, tanpa path. Bila pertama kali menguji dengan domain sementara HTTPS Hostinger, gunakan origin sementara tersebut sebagai `APP_URL`, lalu ganti dan redeploy setelah domain course aktif. Origin POST dipatok ke konfigurasi ini; domain sementara tidak dapat menulis jika APP_URL masih domain course. Jangan mengubahnya menjadi wildcard.
+
+Pendaftaran awal ditutup. Setelah owner berhasil masuk, buka pendaftaran dengan `AUTH_REGISTRATION_ENABLED=true` dan redeploy/restart sesuai pengaturan hPanel. Peserta baru tetap menunggu persetujuan pada `/access`. Belum ada verifikasi email otomatis, jadi pengelola perlu memastikan identitas peserta sebelum menyetujui. Email pendaftar belum membuktikan kepemilikan alamat email.
+
+## 5. Domain dan SSL
+
+Deploy dan periksa log serta URL sementara dahulu. Hubungkan `course.ypi-baitussalam.or.id` ke aplikasi Node. Isi record DNS `course` sesuai nilai yang diberikan hPanel; jangan menebak IP atau mengganti nameserver/record website utama. Jika `course` sudah memiliki record, tinjau tujuannya dahulu.
+
+Pastikan HTTPS/SSL aktif dan `APP_URL` sesuai domain. Cookie sesi memakai prefix `__Host-`, Secure, HttpOnly, SameSite=Lax, Path=/ dan tanpa Domain. Cookie platform tidak dibagikan ke website utama. HTTP localhost hanya tersedia untuk `next dev` dengan `AUTH_ALLOW_LOCAL_HTTP=true`; mode produksi menolak konfigurasi tersebut.
+
+## 6. Uji nyata sebelum mengundang peserta
+
+- Owner masuk di `/login`, melihat `/access`, dan dapat mengelola course.
+- Akun peserta kedua mendaftar, masuk ke `/access` dengan status pending, dan tidak dapat membuka API belajar sebelum persetujuan.
+- Setelah disetujui, peserta dapat mendaftar course, menyimpan profil/progres, dan mengikuti kelas yang disetujui.
+- Peserta A tidak melihat pekerjaan/feedback pribadi peserta B; mentor hanya mengakses kelas yang ditugaskan.
+- Penangguhan menolak akses belajar pada permintaan berikutnya; peserta masih dapat melihat status akun dan keluar.
+- Ganti password mencabut semua sesi; logout mencabut sesi saat ini. Membuka `/logout` saja belum mengakhiri sesi: tombol Keluar mengirim POST.
+- Kuota kuis, syarat materi, revisi progres, review tugas, dan jadwal bekerja. Data bertahan setelah redeploy/restart karena tersimpan di MariaDB.
+- Latihan browser Python/JavaScript diuji pada HTTPS. Judge0 tetap nonaktif; hasil browser tidak meluluskan coding wajib. Jadikan latihan contoh opsional melalui admin jika ingin menguji seluruh perjalanan course sebelum sandbox tersedia.
+- Uji backup dan restore database pada salinan terpisah. Rollback source tidak otomatis membatalkan migrasi.
+
+## CI/CD
+
+Alur pengembangan berikutnya: branch fitur → pull request → CI/build → merge main → deployment Hostinger. Gunakan hasil CI sebagai syarat merge jika aturan branch tersedia pada paket repository Anda.
+
+Integrasi Hostinger yang merespons push **tidak otomatis menunggu GitHub Actions**. Pastikan branch deployment menerima perubahan yang sudah lolos CI. Untuk rilis awal gunakan deployment manual/terawasi. Setelah pengujian hosting berhasil, aktifkan deploy otomatis melalui integrasi Hostinger jika tersedia. Agent belum mengaktifkan integrasi atau mengubah konfigurasi hPanel.
+
+Perubahan terlihat setelah build dan deployment berhasil, bukan setiap kali file diketik. Untuk preview cepat gunakan `npm run dev` lokal, `APP_URL=http://localhost:5173`, dan `AUTH_ALLOW_LOCAL_HTTP=true` pada environment lokal. Koneksi lokal tetap memakai database pengembangan terpisah; jangan menjalankan fixture tes pada hosting.
+
+## Batas tahap ini
+
+Tidak memerlukan penyedia login berbayar atau VPS untuk platform web. Autentikasi memiliki budget awal 20 pendaftaran per jam secara global, 3 per email per jam, 100 percobaan login per 15 menit secara global, dan 10 per email per 15 menit. Budget tersimpan di MariaDB dan berlaku lintas proses; cocok untuk pilot kecil, perlu penyesuaian dan proteksi bot sebelum trafik besar.
+
+Belum ada email verifikasi/reset otomatis, MFA, pentest independen, atau monitoring/backup operasional terkelola. Pemulihan awal melalui operator CLI. Judge0 merupakan layanan terpisah dan opsional; lihat [panduan Judge0 VPS](Install-Judge0-VPS.md).

@@ -1,3 +1,4 @@
+import { readRequestText } from "@/lib/request-body";
 import { cookies } from "next/headers";
 import { z } from "zod";
 import { db, json, AppError } from "@/lib/server";
@@ -11,7 +12,7 @@ export async function POST(req: Request) {
     checkAuthOrigin(req);
     if (!req.headers.get("content-type")?.includes("application/json")) throw new AuthError(415, "Gunakan JSON.");
     if (Number(req.headers.get("content-length") || 0) > 6000) throw new AuthError(413, "Isian terlalu besar.");
-    const text = await req.text();
+    const text = await readRequestText(req, 6000);
     if (text.length > 6000) throw new AuthError(413, "Isian terlalu besar.");
     let raw: unknown;
     try { raw = JSON.parse(text); } catch { throw new AuthError(400, "JSON tidak valid."); }

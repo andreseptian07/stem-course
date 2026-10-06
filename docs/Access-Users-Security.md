@@ -1,41 +1,54 @@
 # Akses pengguna dan keamanan STEM Studio
 
-Akses memiliki dua lapisan: izin mengunjungi Site melalui pengaturan berbagi Sites, lalu persetujuan akun belajar melalui `/access`. Menyetujui akun tidak mengundang pengguna ke Site. Status akun juga tidak memberikan peran editor Site atau admin course.
+Runtime Node memakai login email/password sendiri. Tidak memerlukan akun ChatGPT atau undangan viewer Sites. Katalog publik hanya memberikan ringkasan; akun belajar tetap membutuhkan persetujuan pengelola.
 
-## Menjalankan kelas percobaan
+## Alur kelas percobaan
 
-1. Pemilik masuk ke Site privat terlebih dahulu dan membuka `/access`. Identitas pemilik disimpan pada settings; inisialisasi otomatis ditutup permanen setelah pemilik terikat. Jangan memperluas audience sebelum langkah ini selesai. Set `OWNER_SETUP_ENABLED=false` melalui pengaturan runtime setelah verifikasi pemilik, lalu terbitkan ulang untuk menerapkannya.
-2. Pilih email peserta/mentor yang akan diundang. Tambahkan mereka sebagai viewer Site, bukan editor, melalui kontrol berbagi Sites. Penambahan viewer eksternal dapat mengirim email undangan; perlu instruksi pemilik untuk penerima yang spesifik. Hindari publikasi terbuka sebelum menguji akun nyata.
-3. Pengguna masuk menggunakan ChatGPT. Akun baru berstatus **Menunggu persetujuan** dan hanya dapat melihat status akun sendiri serta ringkasan katalog.
-4. Pemilik membuka **Kelola akses**, menyetujui akun, dan mengisi alasan. Pengguna memuat ulang halaman Akses akun lalu membuka dashboard.
-5. Pemilik menugaskan mentor melalui pengaturan kelas dan menyetujui peserta kelas. Persetujuan akun platform dan keanggotaan kelas adalah dua keputusan terpisah.
-6. Uji dengan akun mentor dan peserta yang berbeda: privasi tugas/feedback, kuis wajib, status review, dan penangguhan akses. Pengujian lokal memakai mock sign-in; tidak menggantikan uji multiakun produksi.
+1. Operator menyiapkan MariaDB dan membuat owner dengan `npm run auth:admin -- create-owner`. Detail ada di [panduan Hostinger](Deploy-Hostinger.md). Owner ditentukan melalui terminal operator, bukan pendaftar publik pertama.
+2. Owner masuk di `/login`; buka pendaftaran melalui `AUTH_REGISTRATION_ENABLED=true` setelah konfigurasi awal benar.
+3. Peserta/mentor membuat akun di `/register`, lalu masuk. Akun baru berstatus **Menunggu persetujuan** pada `/access`; API belajar ditolak sampai persetujuan.
+4. Owner membuka **Kelola akses**, menyetujui akun dengan alasan. Peserta memuat ulang status, lalu membuka dashboard.
+5. Owner menugaskan mentor dan menyetujui peserta per kelas. Persetujuan akun dan keanggotaan kelas tetap terpisah.
+6. Uji dua akun nyata di hosting untuk memastikan privasi tugas/feedback, progres wajib, review, dan penangguhan. Fixture CI tidak menggantikan pengujian DNS, TLS, cookie browser dan jaringan Hostinger.
+
+Alamat email belum diverifikasi melalui email otomatis. Pengelola perlu memverifikasi identitas peserta secara terpisah sebelum persetujuan; pendaftaran tidak membuktikan kepemilikan alamat email. Belum ada klaim email terverifikasi pada profil.
 
 ## Peran dan pembatasan
 
-| Operasi                               | Pemilik     | Peserta aktif        | Mentor aktif          |
-| ------------------------------------- | ----------- | -------------------- | --------------------- |
-| Membuat atau mengubah course          | Ya          | Tidak                | Tidak                 |
-| Menyetujui atau menangguhkan akun     | Ya          | Tidak                | Tidak                 |
-| Mengelola penugasan dan peserta kelas | Ya          | Tidak                | Tidak                 |
-| Membaca materi terbit                 | Ya          | Ya                   | Ya                    |
-| Membaca diskusi/meeting kelas         | Semua kelas | Kelas yang disetujui | Kelas yang ditugaskan |
-| Review tugas dan feedback pribadi     | Semua kelas | Hanya milik sendiri  | Kelas yang ditugaskan |
+| Operasi | Pemilik | Peserta aktif | Mentor aktif |
+| --- | --- | --- | --- |
+| Membuat atau mengubah course | Ya | Tidak | Tidak |
+| Menyetujui atau menangguhkan akun | Ya | Tidak | Tidak |
+| Mengelola mentor dan peserta kelas | Ya | Tidak | Tidak |
+| Membaca materi terbit | Ya | Ya | Ya |
+| Membaca diskusi/meeting kelas | Semua kelas | Kelas yang disetujui | Kelas yang ditugaskan |
+| Review tugas dan feedback pribadi | Semua kelas | Hanya milik sendiri | Kelas yang ditugaskan |
 
-Mentor merupakan penugasan kelas, bukan role admin global. Akun yang ditangguhkan ditolak pada permintaan API belajar berikutnya meskipun masih memiliki cookie login yang valid atau penugasan mentor. Permintaan yang sudah berjalan dapat selesai; materi yang telah diterima browser tidak dapat ditarik kembali. Penangguhan tidak menghapus progres, keanggotaan, atau pekerjaan. Pulihkan akun untuk mengembalikan akses; hapus penugasan/keanggotaan secara terpisah jika tidak ingin memulihkan hak kelas tersebut.
+Mentor merupakan penugasan kelas, bukan admin global. Settings.owner menentukan pemilik; role dari isian, header browser atau tabel users tidak memberikan kepemilikan. Owner tidak dapat menangguhkan dirinya sendiri dari aplikasi.
 
-Pemilik tidak dapat menangguhkan dirinya sendiri dari aplikasi. Hanya settings.owner yang menentukan pemilik; role dari browser, isian profil, atau tabel users tidak dapat mengubahnya. Akun lama selain pemilik tanpa user_access memerlukan persetujuan ulang. Tabel akses dan audit ditambahkan melalui migrasi `0005`, tanpa backfill otomatis atau penghapusan data.
+Penangguhan menolak permintaan API belajar berikutnya meskipun cookie login masih valid; halaman status, logout dan ganti password tetap dapat digunakan. Permintaan yang sedang berjalan dapat selesai dan materi yang sudah diterima browser tidak dapat ditarik kembali. Penangguhan tidak menghapus progres, pekerjaan atau penugasan kelas. Hapus penugasan/keanggotaan secara terpisah bila hak tersebut tidak ingin dipulihkan setelah akun diaktifkan kembali.
 
-## Proteksi yang diterapkan
+## Password dan sesi
 
-- Identitas berasal dari gateway Sites dan SIWC; local mock sign-in hanya digunakan oleh preview. Jangan mengekspos Worker secara langsung tanpa gateway yang memvalidasi dan menghapus header identitas dari klien.
-- API belajar memeriksa persetujuan akun pada setiap permintaan. `/api/access` GET hanya memberikan status sendiri untuk peserta; daftar akun dan audit hanya untuk pemilik.
-- Penulisan akses memeriksa identitas pemilik tersimpan, origin, jenis/ukuran body, schema strict, dan versi. Audit dan perubahan status dijalankan dalam satu transaksi; kehilangan audit membatalkan perubahan.
-- API menolak `Sec-Fetch-Site: cross-site`; pemeriksaan origin tetap dipakai untuk POST. Header `nosniff`, referrer `no-referrer`, pembatasan kamera/mikrofon/lokasi, dan `private, no-store` pada halaman akun/API membantu mengurangi kebocoran data dan penggunaan fitur browser yang tidak diperlukan.
-- Session, password, MFA dan logout dikelola penyedia login ChatGPT/Sites. Aplikasi tidak membuat password baru, tidak mencabut session penyedia secara global, dan tidak menambahkan sistem JWT/password sendiri.
+Password di-hash menggunakan scrypt, salt acak 16 byte, N=32768, r=8, p=3. Parameter mengikuti alternatif 32 MiB pada [OWASP Password Storage](https://cheatsheetseries.owasp.org/cheatsheets/Password_Storage_Cheat_Sheet.html). Password tidak di-trim, dibatasi 15–128 karakter untuk password baru, dan dibandingkan dengan timingSafeEqual. Parameter hash yang tidak dikenal tidak dieksekusi. Maksimal dua operasi hashing bersamaan per proses membatasi RAM/CPU; kapasitas perlu diukur pada paket hosting nyata.
 
-Batas tahap ini: belum ada uji penetrasi independen, monitoring keamanan operasional, backup/restore teruji, moderasi lengkap, atau uji beban multiakun. CSP dan kebijakan frame perlu dirancang terpisah dengan memperhatikan iframe video, runtime latihan browser, dan embed Sites agar tidak memutus fitur yang ada. Judge0 belum dikonfigurasi; hardening akun tidak mengaktifkan penilaian kode server.
+Token sesi acak 256 bit hanya masuk cookie; MariaDB menyimpan hash SHA-256 token, bukan token mentah. Sesi memiliki batas absolut 8 jam dan idle 1 jam; last_seen diperbarui setelah 5 menit aktivitas. Maksimal lima sesi terbaru per akun dipertahankan. Login mengganti sesi browser sebelumnya. Cookie HTTPS memakai `__Host-stem-session`, HttpOnly, Secure, SameSite=Lax, Path=/, tanpa Domain, mengikuti prinsip [OWASP Session Management](https://cheatsheetseries.owasp.org/cheatsheets/Session_Management_Cheat_Sheet.html).
 
-## Verifikasi lokal
+`/password` membutuhkan password saat ini. Perubahan menaikkan versi kredensial dan mencabut seluruh sesi. Verifikasi versi saat penerbitan sesi menolak login yang memakai password lama jika reset terjadi bersamaan. Logout mencabut sesi dari database, bukan hanya menghapus cookie. GET `/logout` hanya menampilkan konfirmasi; perubahan dilakukan melalui POST agar prefetch/link tidak mengakhiri sesi.
 
-`tests/access.test.mjs` memeriksa pemilik tetap, bootstrap tertutup, persetujuan/penangguhan/pemulihan, penolakan role palsu, status akun lama, konflik versi dan rollback audit. `node tests/access-api.mjs` hanya untuk localhost dan fixture `access-demo-local`; memeriksa login, origin, pemalsuan header, larangan menangguhkan pemilik, persistensi audit dan header keamanan.
+Pemulihan awal dilakukan operator melalui `npm run auth:admin -- reset-password`, dengan prompt password tersembunyi dan pemeriksaan identitas pemohon di luar aplikasi. CLI memerlukan akses server/database operator; tidak ada endpoint reset publik yang menerima email untuk mengganti password tanpa bukti. Belum ada email verifikasi, email reset otomatis atau MFA.
+
+## Proteksi API
+
+- Identitas hanya berasal dari cookie yang tokennya ada di database, masih berlaku, dan cocok dengan versi password. Header `oai-authenticated-user-*` tidak dipercaya. Tidak ada mock login di runtime Node produksi.
+- API memeriksa status akun pada setiap permintaan. Peserta melihat status sendiri; daftar pengguna/audit hanya owner. Meeting kelas, tugas dan feedback tetap dibatasi keanggotaan/mentor.
+- Origin POST harus sama dengan `APP_URL`, bukan diturunkan dari Host atau X-Forwarded-Host yang dikirim klien. Sec-Fetch-Site cross-site juga ditolak. HTTPS diwajibkan di produksi; HTTP hanya pada localhost development dengan flag eksplisit.
+- Payload dibatasi ukuran/jenisnya dan divalidasi strict. Body dibaca sebagai stream dengan batas byte dan waktu, termasuk ketika Content-Length tidak ada; UTF-8 yang tidak valid ditolak. Penulisan memakai prepared statements. Konflik versi ditolak. Audit dan perubahan akses satu transaksi; kuota kuis dan hasil satu transaksi; approval kelas dan enrollment satu transaksi.
+- Pembatasan login tersimpan di MariaDB, bukan RAM saja: global 100/15 menit dan per email 10/15 menit; pendaftaran global 20/jam dan per email 3/jam; penggantian password global 100/15 menit dan per email 10/15 menit. Identitas forwarding/IP dari klien tidak dipakai untuk melewati budget ini. Batas pilot dapat menolak sebagian request bersamaan secara konservatif.
+- Header nosniff, no-referrer, pembatasan kemampuan browser, dan private/no-store pada akun/API dipertahankan. Respons login tidak mengirim token dalam JSON atau mencatat password/token pada log.
+
+Budget global sesuai tahap pilot kecil, bukan rancangan antispam untuk trafik besar. Tambahkan proteksi bot/rate limiting pada jaringan yang terpercaya dan benchmark sebelum memperluas trafik. Proteksi CSP/frame perlu dirancang dengan memperhatikan video dan runner iframe. Belum ada pentest independen, monitoring keamanan operasional, moderasi lengkap, backup/restore operasional teruji, atau load test produksi. Judge0 belum diaktifkan.
+
+## Verifikasi
+
+`npm run check` memeriksa tipe dan tes unit untuk aturan akses, password, cookie/origin, progres, tugas, kelas dan adapter database. CI MariaDB memeriksa migrasi, owner setup bersamaan, pendaftaran pending, rotasi/expiry sesi, perubahan/reset password, race reset-login, logout dan budget persisten. `npm run test:http` menghidupkan build Node produksi pada database CI terpisah lalu menguji login, cookie, origin, header palsu, approval/suspension, enrollment, logout dan asset runner. Semua fixture dibatasi localhost/database sementara; jangan arahkan ke Hostinger.

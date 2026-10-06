@@ -1,12 +1,12 @@
 # STEM Studio
 
-Repository utama: [andreseptian07/stem-course](https://github.com/andreseptian07/stem-course). Lihat [pengaturan repository dan autentikasi GitHub](docs/GitHub-Repository.md). CI memeriksa source; deployment Hostinger masih menunggu port runtime dan fitur aplikasi.
+Repository utama: [andreseptian07/stem-course](https://github.com/andreseptian07/stem-course). Lihat [pengaturan repository dan autentikasi GitHub](docs/GitHub-Repository.md). CI memeriksa source, build Node, MariaDB dan autentikasi HTTP; deployment Hostinger menunggu konfigurasi database/domain pada hPanel.
 
 MVP platform e-course berbahasa Indonesia: ruang belajar, authoring course, kuis bertingkat, latihan coding, diskusi mentor, dan jadwal sesi online/offline. Konten ESP32 bawaan hanya contoh yang boleh diganti.
 
 ## Pilihan teknologi
 
-TypeScript dan React untuk antarmuka serta API; ekosistem Node.js untuk pengembangan. Starter Vinext menyediakan routing kompatibel Next.js dengan runtime Cloudflare Workers untuk hosting Sites. Penyimpanan menggunakan D1 (SQLite) dan migrasi Drizzle. Runtime produksi ini bukan server Node.js biasa; migrasi ke VPS/Next.js memerlukan penyesuaian adapter database, autentikasi, dan deployment.
+Next.js, TypeScript dan React pada Node.js 22 untuk antarmuka/API, serta MariaDB 10.11+ untuk data. `npm run build` membuat build produksi dan `npm start` menjalankan server Next.js. Login email/password memakai scrypt dan sesi yang diverifikasi server; tidak memerlukan layanan autentikasi berbayar. Pool MariaDB dipertahankan per proses. Source berasal dari Site Vinext/Cloudflare; runtime utama sekarang ditujukan ke Hostinger, sementara data/migrasi D1 lama disimpan sebagai referensi dan tes regresi.
 
 Latihan gratis Python (Pyodide) dan JavaScript berjalan di browser pada iframe opaque origin dan Web Worker. Hanya contoh publik yang dinilai; hasil tidak dapat meluluskan tes wajib. Penilaian resmi menjalankan kode melalui Judge0 di mesin sandbox terpisah. Bahasa backend tidak membatasi bahasa latihan: adapter mendukung Python, JavaScript, dan C++. Jangan menjalankan kode peserta langsung di proses web atau menonaktifkan sandbox Judge0.
 
@@ -14,11 +14,11 @@ Latihan gratis Python (Pyodide) dan JavaScript berjalan di browser pada iframe o
 
 - Dashboard `/dashboard`: course yang diikuti, progres berdasarkan revisi materi, tombol melanjutkan, filter status, dan sesi mentor yang didaftarkan. Course dengan progres lama tetap dikenali. Tombol Mulai belajar di detail course menambahkan enrollment tanpa pembayaran dan aman dipanggil berulang.
 - Ringkasan tugas dashboard: tugas dari kelas dengan keanggotaan aktif, filter Semua/Perlu dikerjakan/Menunggu review/Diterima, tenggat WIB, penanda terlambat, kiriman terbaru, tanggal review, serta nilai opsional. Tugas draft, kelas diarsipkan, dan keanggotaan yang berakhir tidak ditampilkan. Tugas ditutup tetap dapat dilihat tetapi tidak dihitung perlu dikerjakan. Muat ulang dashboard untuk mengambil status terbaru. Tautan `/classes?class=…&task=…` membuka tugas yang dipilih dan dipertahankan selama alur login; API ringkasan tidak mengirim isi pekerjaan, feedback, atau tautan repositori.
-- Profil `/profile`: nama tampilan, institusi, biodata, minat, tujuan belajar, dan warna avatar inisial. Email mengikuti akun ChatGPT dan hanya tampil pada pemilik akun. Belum ada unggah foto. Profil memakai versi untuk menolak penimpaan dari tab lain; perubahan yang belum disimpan dilindungi saat navigasi.
-- Profil dan enrollment disimpan di D1 melalui migrasi tambahan `drizzle/0001_fair_timeslip.sql`. API akun selalu memakai identitas server, tidak menerima role atau ID akun lain dari isian profil. Profil pribadi tidak dimasukkan dalam respons katalog.
+- Profil `/profile`: nama tampilan, institusi, biodata, minat, tujuan belajar, dan warna avatar inisial. Email mengikuti akun login mandiri dan hanya tampil pada pemilik akun. Belum ada unggah foto. Profil memakai versi untuk menolak penimpaan dari tab lain; perubahan yang belum disimpan dilindungi saat navigasi.
+- Profil dan enrollment disimpan di MariaDB. API akun selalu memakai identitas server, tidak menerima role atau ID akun lain dari isian profil. Profil pribadi tidak dimasukkan dalam respons katalog.
 - Beranda `/`, katalog `/courses` dengan pencarian/filter, dan detail `/courses/[id]`. Ruang belajar sekarang di `/learn`; tautan lama `/?course=...` dialihkan ke ruang belajar.
 - Informasi detail dikelola di Pengaturan course: tujuan, prasyarat/alat, peserta yang dituju, format belajar, dan profil mentor. Course draft tidak tampil di katalog. Estimasi durasi dihitung dari materi; jadwal berasal dari sesi admin.
-- API katalog hanya mengirim ringkasan kurikulum, bukan blok materi, kunci jawaban, hidden tests, atau tautan meeting. Akses Site tetap privat; halaman depan belum dibuka untuk pengunjung internet umum.
+- API katalog hanya mengirim ringkasan kurikulum, bukan blok materi, kunci jawaban, hidden tests, atau tautan meeting. Katalog dapat dibuka tanpa login pada runtime Node; isi materi dan data akun tetap membutuhkan akses peserta.
 - Course draft/terbit; modul dan urutan materi; blok teks, judul, catatan, video HTTPS, gambar HTTPS, kode, dan diagram sederhana.
 - Tes review atau wajib lulus, nilai minimum, batas percobaan, pilihan jawaban tunggal/jamak, pembahasan configurable.
 - Penguncian materi divalidasi pada server. Kunci jawaban dan hidden test case tidak dikirim lewat API peserta. Revisi materi membatalkan progres lama pada materi yang berubah.
@@ -29,7 +29,7 @@ Latihan gratis Python (Pyodide) dan JavaScript berjalan di browser pada iframe o
 - Kelas `/classes`: owner membuat kelompok untuk satu course, menugaskan mentor, mengatur kapasitas dan periode, menyetujui peserta, serta mengarsipkan kelas. Mentor dipilih dari akun yang sudah pernah masuk; penugasan berlaku hanya pada kelas tersebut.
 - Ruang kelas menyediakan diskusi, pengumuman mentor, sesi online/offline dalam WIB, progres per materi, dan feedback pribadi. Peserta hanya melihat feedback untuk dirinya; daftar peserta dan progres hanya tersedia untuk owner/mentor kelas. Reset kuota percobaan tidak memberikan kelulusan.
 - Tugas proyek berada di ruang kelas: owner/mentor membuat instruksi, tenggat WIB, serta status draft/dibuka/ditutup. Peserta aktif mengirim penjelasan dan tautan HTTPS; mentor memberi feedback, nilai opsional 0–100, serta hasil diterima/perlu revisi. Kiriman baru hanya tersedia pada pengiriman pertama atau setelah permintaan revisi, maksimal 20 versi per peserta/tugas dan 100 tugas per kelas. Kiriman terlambat tetap diterima dan ditandai.
-- Riwayat kiriman dan salinan instruksi saat pengiriman disimpan di D1. Peserta hanya melihat kirimannya sendiri; mentor yang ditugaskan dan owner dapat melihat kiriman kelas. Review memakai versi untuk menghindari penimpaan; hanya kiriman terbaru yang dapat ditinjau, dan review yang diperbarui mengganti feedback pada kiriman tersebut. Arsip kelas mematikan penulisan. Nilai proyek tidak meluluskan kuis/coding atau membuka materi wajib. Tautan dibuka oleh mentor secara manual; belum ada unggah berkas, eksekusi repositori, atau pemeriksaan hardware otomatis.
+- Riwayat kiriman dan salinan instruksi saat pengiriman disimpan di MariaDB. Peserta hanya melihat kirimannya sendiri; mentor yang ditugaskan dan owner dapat melihat kiriman kelas. Review memakai versi untuk menghindari penimpaan; hanya kiriman terbaru yang dapat ditinjau, dan review yang diperbarui mengganti feedback pada kiriman tersebut. Arsip kelas mematikan penulisan. Nilai proyek tidak meluluskan kuis/coding atau membuka materi wajib. Tautan dibuka oleh mentor secara manual; belum ada unggah berkas, eksekusi repositori, atau pemeriksaan hardware otomatis.
 - Agenda dashboard menggabungkan sesi umum yang didaftarkan dan sesi dari kelas yang diikuti/dimentori. Sesi kelas menggunakan tautan meeting eksternal; belum ada rekaman, absensi, atau pengingat otomatis. Course tidak dapat diganti setelah kelas dibuat; progres tetap melekat pada akun dan course meskipun keanggotaan kelas berakhir.
 
 ## Menjalankan lokal
@@ -40,11 +40,9 @@ Skema: `db/schema.ts`. Migrasi awal: `drizzle/0000_previous_toxin.sql`. Untuk pe
 
 ## Autentikasi dan admin pertama
 
-Pengelolaan akses tersedia di `/access`: akun baru menunggu persetujuan, pemilik menyetujui/menangguhkan/memulihkan dengan alasan, dan audit dicatat secara atomik. Pemilik dilindungi dari penangguhan diri; mentor tetap terbatas pada penugasan kelas. Akun lama selain pemilik memerlukan persetujuan ulang. API belajar memeriksa akun aktif; halaman browser yang dibatasi mengarahkan akun belum aktif ke halaman status. Lihat [panduan akses dan keamanan](docs/Access-Users-Security.md) untuk alur mengundang viewer Site, batas penangguhan dan verifikasi multiakun.
+Pengelolaan akses tersedia di `/access`: akun baru menunggu persetujuan, pemilik menyetujui/menangguhkan/memulihkan dengan alasan, dan audit dicatat secara atomik. Pemilik dilindungi dari penangguhan diri; mentor tetap terbatas pada penugasan kelas. Akun lama selain pemilik memerlukan persetujuan ulang. API belajar memeriksa akun aktif; halaman browser yang dibatasi mengarahkan akun belum aktif ke halaman status. Lihat [panduan akses dan keamanan](docs/Access-Users-Security.md) untuk login mandiri, pendaftaran pending, batas penangguhan dan verifikasi multiakun.
 
-Versi awal diterbitkan privat untuk pemilik melalui Sites dengan Sign in with ChatGPT. Header identitas hanya tepercaya di belakang gateway autentikasi Sites; jangan mengekspos Worker langsung ke internet tanpa gateway yang menghapus header identitas dari klien.
-
-`OWNER_SETUP_ENABLED=true` digunakan hanya pada deployment privat awal. Pengguna pertama yang terautentikasi disimpan sebagai owner secara atomik di tabel settings. Penanda `owner_setup_closed` menutup bootstrap permanen setelah pemilik tersimpan. Setelah pemilik berhasil masuk, operator sebaiknya mengubah flag menjadi `false` sebelum memperluas akses. Owner tetap tersimpan walaupun flag dimatikan. Penugasan mentor atau persetujuan peserta kelas tidak memberikan izin akses Site: akun lain perlu mendapat akses Site dan masuk dahulu sebelum muncul pada pilihan akun kelas. Site saat ini tetap privat untuk pemilik. Akses peserta umum, onboarding komersial, pembayaran, sertifikat, peran mentor global untuk authoring course, backup/restore operasional, moderasi, dan load test belum menjadi bagian MVP ini.
+Login mandiri tersedia di `/login` dan `/register`, logout melalui POST dari `/logout`, dan penggantian password di `/password`. Owner dibuat lewat `npm run auth:admin -- create-owner` setelah migrasi. Pendaftaran default tertutup melalui `AUTH_REGISTRATION_ENABLED=false`. Sesi dicabut ketika password berubah; pemulihan awal melalui CLI operator. Email belum diverifikasi otomatis. Lihat panduan hosting sebelum membuka pendaftaran nyata. Pembayaran, sertifikat, unggah berkas, moderasi, dan operasi backup/monitoring belum tersedia.
 
 ## Mengaktifkan pemeriksaan kode
 
@@ -57,23 +55,20 @@ Tanpa endpoint, hanya tombol penilaian resmi dinonaktifkan; latihan browser teta
 
 ## Verifikasi
 
-Persiapan migrasi ke subdomain sendiri dan CI GitHub dijelaskan di [panduan Hostinger](docs/Deploy-Hostinger.md). Workflow GitHub memeriksa tipe dan unit test; port runtime/login/database dan deployment Hostinger belum selesai.
-
-Foundation MariaDB Node.js disiapkan terpisah dari D1: driver mysql2, skema 19 tabel, runner migrasi dengan lock/hash dan uji database sementara CI. Isi password di `.env.local` atau environment aplikasi Hostinger, lalu jalankan `npm run db:check`. Lihat [petunjuk konfigurasi MariaDB](docs/Configure-MariaDB.md). Query course, akun, progres/kuis, kelas/mentor, tugas/review, sesi/RSVP dan percobaan coding mendukung adapter D1/MariaDB. Skenario transaksi, kapasitas dan privasi diuji pada kedua database. API utama masih memakai D1 sampai port runtime Node dan autentikasi selesai; hasil CI bukan bukti koneksi database Hostinger.
+Pemasangan dan CI/CD dijelaskan di [panduan Hostinger](docs/Deploy-Hostinger.md); konfigurasi password database di [panduan MariaDB](docs/Configure-MariaDB.md). Login, pendaftaran pending, logout, password, dan pembuatan owner operator dijelaskan di [panduan akses](docs/Access-Users-Security.md).
 
 ```sh
-npx tsc --noEmit
-node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/access.test.mjs
+npm run check
 npm run build
+npm run db:check
+npm run db:migrate:mariadb -- --apply
+npm run auth:admin -- create-owner
+npm start
 ```
 
-Pengujian aturan mencakup syarat progres, revisi, penilaian multi-jawaban, penyembunyian kunci/test tersembunyi, validasi isian, dan kontrak adapter Judge0. Uji browser dilakukan pada database lokal, terpisah dari data hosting.
+Dua perintah migrasi/owner hanya dijalankan operator setelah koneksi dan target database benar. CI tidak menggunakan database Hostinger. `npm run test:mariadb` dan `npm run test:http` khusus fixture CI yang dibatasi ke localhost/database sementara; bukan untuk server produksi. Tes mencakup akses, kapasitas, progres/kuis, privasi feedback/tugas, rollback transaksi, sesi, reset password, pemalsuan header, CSRF dan HTTP server Node.
 
-Tambahan `node tests/account-api.mjs` dijalankan hanya dengan pratinjau localhost dan mock login aktif. Tes ini menyimpan ulang profil lokal tanpa mengubah isi, menaikkan versinya, serta mendaftarkan course contoh. Pemeriksaan mencakup akses anonim, penolakan role/ID akun lain, origin, konflik versi, persistensi, privasi katalog, dan enrollment idempotent. Jangan arahkan tes ini ke hosting produksi.
-
-`node tests/classes-api.mjs` membuat kelas dan pesan uji pada localhost. Tes SQLite kelas mencakup kapasitas, konflik versi, privasi feedback, pencabutan mentor/keanggotaan saat penulisan, agenda, arsip, progres berdasarkan revisi, dan reset percobaan. Migrasi tambahan `0003` menambahkan tabel kelas, peserta, pesan, feedback, serta jadwal; data contoh pengujian lokal tidak dipindahkan ke produksi.
-
-Migrasi `0004` menambahkan tugas proyek dan riwayat kiriman. `tests/projects.test.mjs` menguji batas akses, privasi, konflik versi, snapshot instruksi, revisi, serta pencabutan izin saat penulisan. `node tests/projects-api.mjs` memakai fixture kelas ESP32 lokal untuk memeriksa autentikasi, origin, validasi, persistensi, dan konflik versi; tidak dijalankan pada produksi.
+Script lama `tests/*-api.mjs` memakai mock gateway Site/D1 dan bukan tes runtime Node. Source Site lama tersedia pada commit sebelum port Node; metadata hosting dan tooling lama bukan instruksi deployment Hostinger.
 
 ## Struktur kode
 
@@ -82,9 +77,9 @@ Migrasi `0004` menambahkan tugas proyek dan riwayat kiriman. `tests/projects.tes
 - `app/classroom.tsx`, `app/api/classes/route.ts`, `lib/classes.ts`: antarmuka kelas, API, dan aturan akses per kelas.
 - `lib/rules.ts`, `lib/validation.ts`: aturan progres dan validasi.
 - `lib/judge.ts`: adapter eksekusi terisolasi.
-- `lib/server.ts`, `db/schema.ts`, `drizzle/`: data, role, dan migrasi.
-- `.openai/hosting.json`: identitas Site; gunakan Site yang sama untuk penerbitan selanjutnya.
+- `lib/server.ts`, `db/runtime.ts`, `db/mariadb-schema.ts`, `mariadb/`: runtime, data dan migrasi Node/MariaDB.
+- `lib/auth*.ts`, `app/api/auth/route.ts`, `app/login/`: autentikasi web dan sesi server.
 
 Panduan pemasangan terpisah: [Install Judge0 di VPS](docs/Install-Judge0-VPS.md). Migrasi `0002` menambahkan lease polling dan indeks antrean. Reservasi pengiriman/kuota atomik, pembatasan satu pengiriman aktif per akun, lima pengiriman per menit, maksimal 20 attempt aktif global, dan refund kegagalan/timeout tepat sekali. Respons Judge0 dibatasi ukurannya, base64 untuk output non-UTF8, status/token divalidasi, hasil tersembunyi disaring, dan revisi lama tidak meluluskan materi baru. Pengujian SQLite memakai database sementara; tidak mengakses produksi. Uji mesin sandbox produksi masih menunggu layanan yang disediakan pengguna.
 
-`node --experimental-strip-types tests/code-api.mjs` menguji penolakan pemalsuan kelulusan dan membuat course JavaScript uji lokal. Jalankan hanya pada preview localhost.
+`node --experimental-strip-types tests/code-api.mjs` menguji penolakan pemalsuan kelulusan dan membuat course JavaScript uji lokal. Script ini untuk preview Site lama, bukan runtime Node saat ini.

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { hashPassword, verifyPassword, validatePassword } from "../lib/auth-password.ts";
 import { appOrigin, checkAuthOrigin, sessionCookie, safeReturnPath } from "../lib/auth-policy.ts";
 import { registrationSchema } from "../lib/auth-data.ts";
+import { readRequestText } from "../lib/request-body.ts";
 
 test("production origin and cookie policy never permit insecure remote HTTP", () => {
   const env = { APP_URL: "https://course.example.com", NODE_ENV: "production" };
@@ -35,4 +36,11 @@ test("salted scrypt hashes differ, preserve spaces/unicode, and reject malformed
   assert.equal(await verifyPassword(password.trim(), first), false);
   assert.equal(await verifyPassword("wrong-passphrase", null), false);
   assert.equal(await verifyPassword(password, "scrypt:999999:8:1:bad:bad"), false);
+});
+test("streaming request limits stop oversized or invalid UTF-8 bodies without trusting content-length", async () => {
+  const valid = new Request("https://example.com", { method: "POST", body: "Peserta 🌱" });
+  assert.equal(await readRequestText(valid, 32), "Peserta 🌱");
+  const stream = new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(7000)); controller.close(); } });
+  await assert.rejects(() => readRequestText(new Request("https://example.com", { method: "POST", body: stream, duplex: "half" }), 6000), (e) => e.status === 413);
+  await assert.rejects(() => readRequestText(new Request("https://example.com", { method: "POST", body: new Uint8Array([255, 255]) }), 100), (e) => e.status === 400);
 });
