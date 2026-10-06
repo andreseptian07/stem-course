@@ -180,3 +180,46 @@ export const cohortSessions = sqliteTable(
   },
   (t) => [index("cohort_sessions_class_time").on(t.classId, t.startsAt)],
 );
+
+export const classAssignments = sqliteTable(
+  "class_assignments",
+  {
+    id: text("id").primaryKey(),
+    classId: text("class_id").notNull(),
+    title: text("title").notNull(),
+    instructions: text("instructions").notNull(),
+    dueAt: text("due_at"),
+    status: text("status").notNull(),
+    version: integer("version").notNull().default(1),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("assignments_class").on(t.classId, t.createdAt)],
+);
+export const projectSubmissions = sqliteTable(
+  "project_submissions",
+  {
+    id: text("id").primaryKey(),
+    assignmentId: text("assignment_id").notNull(),
+    studentId: text("student_id").notNull(),
+    attempt: integer("attempt").notNull(),
+    assignmentVersion: integer("assignment_version").notNull(),
+    instructions: text("instructions").notNull(),
+    body: text("body").notNull(),
+    url: text("url").notNull(),
+    submittedAt: text("submitted_at").notNull(),
+    late: integer("late").notNull().default(0),
+    status: text("status").notNull().default("submitted"),
+    feedback: text("feedback").notNull().default(""),
+    score: integer("score"),
+    reviewerName: text("reviewer_name"),
+    reviewedAt: text("reviewed_at"),
+    version: integer("version").notNull().default(1),
+  },
+  (t) => [
+    index("submissions_assignment_student").on(
+      t.assignmentId,
+      t.studentId,
+      t.attempt,
+    ),
+  ],
+);

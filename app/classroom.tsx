@@ -17,6 +17,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import type { ClassForm } from "@/lib/classes";
+import Projects from "./projects";
 import "./account.css";
 import "./classroom.css";
 const date = (s: string | null) =>
@@ -649,6 +650,13 @@ export default function Classes() {
               </section>
               {member && (
                 <>
+                  <Projects
+                    key={c.id}
+                    classId={c.id}
+                    userId={data.user.id}
+                    archived={!!archived}
+                    isParticipant={c.membership === "approved"}
+                  />
                   {staff && (
                     <section className="class-panel">
                       <div className="class-section-head">

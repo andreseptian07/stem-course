@@ -388,3 +388,95 @@
     gap: 9px;
   }
 }
+.projects-panel h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.project-task-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+  gap: 15px;
+}
+.project-task {
+  text-align: left;
+  background: #f7faf9;
+  border: 1px solid #dfe8e5;
+  border-radius: 12px;
+  padding: 20px;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.project-task:hover {
+  border-color: #407c72;
+  background: #f0f7f4;
+}
+.project-task h3 {
+  font-size: 18px;
+  margin: 14px 0 8px;
+}
+.project-task p {
+  margin: 8px 0;
+}
+.project-form {
+  display: grid;
+  gap: 16px;
+  background: #f7faf9;
+  padding: 22px;
+  border-radius: 12px;
+  margin: 20px 0;
+}
+.project-form h3,
+.project-form p {
+  margin: 0;
+}
+.project-brief {
+  margin: 24px 0;
+  padding: 22px;
+  background: #f0f7f4;
+  border-left: 4px solid #407c72;
+  border-radius: 8px;
+}
+.project-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+.project-submission {
+  border: 1px solid #dfe8e5;
+  border-radius: 12px;
+  padding: 22px;
+  margin: 15px 0;
+}
+.project-submission h4 {
+  font-size: 16px;
+  margin: 0;
+}
+.project-submission details {
+  margin: 16px 0;
+  font-size: 14px;
+}
+.project-submission summary {
+  cursor: pointer;
+}
+.project-review {
+  padding: 18px;
+  background: #f0f7f4;
+  border-radius: 8px;
+  margin: 18px 0;
+}
+.projects-panel small {
+  font-size: 14px;
+  color: #61716d;
+}
+@media (max-width: 760px) {
+  .project-form,
+  .project-brief,
+  .project-submission {
+    padding: 16px;
+  }
+  .project-task-list {
+    grid-template-columns: 1fr;
+  }
+}

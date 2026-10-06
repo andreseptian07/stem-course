@@ -25,6 +25,8 @@ Latihan gratis Python (Pyodide) dan JavaScript berjalan di browser pada iframe o
 - Admin materi, aturan kuis, latihan kode, jadwal, progres peserta, dan reset percobaan.
 - Kelas `/classes`: owner membuat kelompok untuk satu course, menugaskan mentor, mengatur kapasitas dan periode, menyetujui peserta, serta mengarsipkan kelas. Mentor dipilih dari akun yang sudah pernah masuk; penugasan berlaku hanya pada kelas tersebut.
 - Ruang kelas menyediakan diskusi, pengumuman mentor, sesi online/offline dalam WIB, progres per materi, dan feedback pribadi. Peserta hanya melihat feedback untuk dirinya; daftar peserta dan progres hanya tersedia untuk owner/mentor kelas. Reset kuota percobaan tidak memberikan kelulusan.
+- Tugas proyek berada di ruang kelas: owner/mentor membuat instruksi, tenggat WIB, serta status draft/dibuka/ditutup. Peserta aktif mengirim penjelasan dan tautan HTTPS; mentor memberi feedback, nilai opsional 0–100, serta hasil diterima/perlu revisi. Kiriman baru hanya tersedia pada pengiriman pertama atau setelah permintaan revisi, maksimal 20 versi per peserta/tugas dan 100 tugas per kelas. Kiriman terlambat tetap diterima dan ditandai.
+- Riwayat kiriman dan salinan instruksi saat pengiriman disimpan di D1. Peserta hanya melihat kirimannya sendiri; mentor yang ditugaskan dan owner dapat melihat kiriman kelas. Review memakai versi untuk menghindari penimpaan; hanya kiriman terbaru yang dapat ditinjau, dan review yang diperbarui mengganti feedback pada kiriman tersebut. Arsip kelas mematikan penulisan. Nilai proyek tidak meluluskan kuis/coding atau membuka materi wajib. Tautan dibuka oleh mentor secara manual; belum ada unggah berkas, eksekusi repositori, atau pemeriksaan hardware otomatis.
 - Agenda dashboard menggabungkan sesi umum yang didaftarkan dan sesi dari kelas yang diikuti/dimentori. Sesi kelas menggunakan tautan meeting eksternal; belum ada rekaman, absensi, atau pengingat otomatis. Course tidak dapat diganti setelah kelas dibuat; progres tetap melekat pada akun dan course meskipun keanggotaan kelas berakhir.
 
 ## Menjalankan lokal
@@ -52,7 +54,7 @@ Tanpa endpoint, hanya tombol penilaian resmi dinonaktifkan; latihan browser teta
 
 ```sh
 npx tsc --noEmit
-node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs
+node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs
 npm run build
 ```
 
@@ -61,6 +63,8 @@ Pengujian aturan mencakup syarat progres, revisi, penilaian multi-jawaban, penye
 Tambahan `node tests/account-api.mjs` dijalankan hanya dengan pratinjau localhost dan mock login aktif. Tes ini menyimpan ulang profil lokal tanpa mengubah isi, menaikkan versinya, serta mendaftarkan course contoh. Pemeriksaan mencakup akses anonim, penolakan role/ID akun lain, origin, konflik versi, persistensi, privasi katalog, dan enrollment idempotent. Jangan arahkan tes ini ke hosting produksi.
 
 `node tests/classes-api.mjs` membuat kelas dan pesan uji pada localhost. Tes SQLite kelas mencakup kapasitas, konflik versi, privasi feedback, pencabutan mentor/keanggotaan saat penulisan, agenda, arsip, progres berdasarkan revisi, dan reset percobaan. Migrasi tambahan `0003` menambahkan tabel kelas, peserta, pesan, feedback, serta jadwal; data contoh pengujian lokal tidak dipindahkan ke produksi.
+
+Migrasi `0004` menambahkan tugas proyek dan riwayat kiriman. `tests/projects.test.mjs` menguji batas akses, privasi, konflik versi, snapshot instruksi, revisi, serta pencabutan izin saat penulisan. `node tests/projects-api.mjs` memakai fixture kelas ESP32 lokal untuk memeriksa autentikasi, origin, validasi, persistensi, dan konflik versi; tidak dijalankan pada produksi.
 
 ## Struktur kode
 
