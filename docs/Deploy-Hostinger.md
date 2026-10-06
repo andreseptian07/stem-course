@@ -8,7 +8,9 @@ Source sekarang menjalankan **Next.js pada Node.js**, memakai MariaDB dan login 
 
 GitHub Actions memeriksa tipe, tes unit, build Node, migrasi/query pada MariaDB 10.11 sementara, autentikasi, dan alur HTTP produksi. CI tidak memakai server/password Hostinger dan belum menjadi job deployment. Tampilan Site lama tidak berubah sampai ada deployment ke hosting yang dituju.
 
-Pada **7 Oktober 2026**, koneksi nyata MariaDB Hostinger berhasil, dengan TLS aktif dan verifikasi sertifikat/hostname. Database khusus course dipastikan kosong, kemudian dua migrasi berhasil diterapkan; jumlah tabel terverifikasi 23. Owner, deployment Node.js, DNS/SSL aplikasi, dan CI/CD deployment belum selesai. Tidak ada impor otomatis peserta/progres dari D1; perubahan penyedia login menghasilkan ID akun baru. Bila ingin memindahkan data Site lama, lakukan pemetaan akun dan uji import terpisah dahulu.
+Pada **7 Oktober 2026**, deployment nyata Next.js/Node.js 22 dari GitHub berhasil di `https://course.ypi-baitussalam.or.id`. Hostinger menunjukkan SSL dan deploy otomatis aktif untuk branch `main`. Pemeriksaan HTTPS menemukan `/login` dan `/api/catalog` merespons 200, serta dashboard anonim mengalihkan ke login. API katalog berhasil membaca MariaDB; belum ada course yang diterbitkan.
+
+Database khusus course sebelumnya dipastikan kosong, lalu dua migrasi berhasil diterapkan; jumlah tabel terverifikasi 23. Koneksi memakai TLS dengan verifikasi sertifikat/hostname. Akun owner belum dibuat pada pemeriksaan awal, sehingga login admin dan perjalanan peserta/mentor nyata belum diuji. Tidak ada impor otomatis peserta/progres dari D1; perubahan penyedia login menghasilkan ID akun baru. Bila ingin memindahkan data Site lama, lakukan pemetaan akun dan uji import terpisah dahulu.
 
 ## 1. Periksa database dan buat tabel
 
@@ -54,7 +56,7 @@ Nama menu dapat berbeda. [Panduan resmi Hostinger](https://www.hostinger.com/sup
 
 Lokasi yang ditentukan pengguna, `/home/USER/domains/DOMAIN/public_html/course`, merupakan folder di hosting website utama. Menyalin source ke folder itu saja tidak menyalakan server Next.js. Gunakan deployment **Aplikasi Web Node.js** dan domain yang diarahkan ke aplikasi tersebut; lokasi checkout/proses mengikuti konfigurasi layanan Node.js Hostinger. Simpan kredensial di environment aplikasi, bukan file yang dapat dilayani sebagai aset publik.
 
-Pada pemeriksaan hPanel 7 Oktober 2026, onboarding Node.js awalnya menolak `course.ypi-baitussalam.or.id` karena subdomain sudah aktif. Pengguna menonaktifkan subdomain lama sendiri, lalu pengulangan onboarding menerima subdomain course dan mencapai pilihan impor GitHub. Domain sementara tidak digunakan. Koneksi GitHub, pengaturan build/environment, deployment, dan pengujian login produksi masih harus diselesaikan.
+Pada pemeriksaan hPanel 7 Oktober 2026, onboarding Node.js awalnya menolak `course.ypi-baitussalam.or.id` karena subdomain sudah aktif. Pengguna menonaktifkan subdomain lama sendiri, lalu pengulangan onboarding menerima subdomain course dan impor GitHub. Domain sementara tidak digunakan. Preset Next.js, Node.js 22.x, root `./`, build `npm run build`, package manager npm, dan output `.next` berhasil dipakai untuk pemasangan awal.
 
 ## 4. Isi environment aplikasi
 
@@ -76,6 +78,8 @@ NEXT_TELEMETRY_DISABLED=1
 ```
 
 Masukkan setiap nilai hPanel tanpa kutip pembungkus. Hostname database yang disediakan pengguna sudah lolos pemeriksaan koneksi/TLS dari komputer operator tanpa CA tambahan. Uji kembali dari runtime Node.js hosting. Isi `DB_SSL_CA_BASE64` jika operator database menyediakan CA khusus; jangan mengganti verifikasi TLS dengan koneksi tanpa enkripsi.
+
+**Impor .env di hPanel dapat menggabungkan nilai ke baris yang dideteksi dari template**, sehingga variabel opsional yang tidak digunakan tetap tertinggal dan kosong. Pada pemasangan awal, tombol Selesai tidak aktif sampai baris kosong `DB_SSL_CA_BASE64`, `JUDGE0_URL`, `JUDGE0_TOKEN`, `JUDGE0_API_KEY`, `JUDGE0_API_HOST`, `JUDGE0_PYTHON_ID`, `JUDGE0_JAVASCRIPT_ID`, dan `JUDGE0_CPP_ID` dihapus dari formulir. Dengan Judge0 nonaktif dan TLS terverifikasi tanpa CA khusus, delapan baris itu tidak diperlukan. Tetap pertahankan `DB_PASSWORD`, `DB_SSL_MODE=required`, dan `JUDGE0_ENABLED=false`. Instalasi awal menyimpan 12 variabel environment, termasuk `NEXT_TELEMETRY_DISABLED=1`.
 
 `APP_URL` adalah origin HTTPS persis yang dibuka browser, tanpa path. Bila pertama kali menguji dengan domain sementara HTTPS Hostinger, gunakan origin sementara tersebut sebagai `APP_URL`, lalu ganti dan redeploy setelah domain course aktif. Origin POST dipatok ke konfigurasi ini; domain sementara tidak dapat menulis jika APP_URL masih domain course. Jangan mengubahnya menjadi wildcard.
 
@@ -103,7 +107,9 @@ Pastikan HTTPS/SSL aktif dan `APP_URL` sesuai domain. Cookie sesi memakai prefix
 
 Alur pengembangan berikutnya: branch fitur → pull request → CI/build → merge main → deployment Hostinger. Gunakan hasil CI sebagai syarat merge jika aturan branch tersedia pada paket repository Anda.
 
-Integrasi Hostinger yang merespons push **tidak otomatis menunggu GitHub Actions**. Pastikan branch deployment menerima perubahan yang sudah lolos CI. Untuk rilis awal gunakan deployment manual/terawasi. Setelah pengujian hosting berhasil, aktifkan deploy otomatis melalui integrasi Hostinger jika tersedia. Agent belum mengaktifkan integrasi atau mengubah konfigurasi hPanel.
+Integrasi Hostinger yang merespons push **tidak otomatis menunggu GitHub Actions**. Dashboard instalasi nyata sudah menunjukkan deploy otomatis aktif pada branch `main`. Jalankan CI pada branch perubahan dahulu, lalu masukkan commit yang telah lulus ke `main`; push ke branch perubahan tidak memperbarui produksi. GitHub Actions juga memeriksa audit dependency produksi dan menolak advisory high/critical sebelum rilis. Pemeriksaan ini tidak membuktikan semua dependency pengembangan bebas advisory.
+
+Audit pemasangan awal menemukan 5 advisory pada dependency produksi, termasuk satu critical pada Next.js 16.3.4. Source diperbarui ke Next.js/ESLint 16.3.6, sharp yang telah diperbaiki, serta patch dependency transitif. Audit `npm audit --omit=dev --json` setelah pembaruan melaporkan **0 advisory produksi pada 7 Oktober 2026**. Advisory Next.js terkait `next/og ImageResponse`; aplikasi tidak memakai API tersebut, tetapi patch tetap diterapkan agar dependency tidak tertinggal. Lihat [advisory resmi Next.js](https://github.com/advisories/GHSA-vcvr-r3jv-pc5j) dan [advisory sharp](https://github.com/advisories/GHSA-wq5f-xc86-pv6w). Hasil audit adalah pemeriksaan advisory yang diketahui saat itu, bukan pentest atau jaminan seluruh aplikasi bebas celah.
 
 Perubahan terlihat setelah build dan deployment berhasil, bukan setiap kali file diketik. Untuk preview cepat gunakan `npm run dev` lokal, `APP_URL=http://localhost:5173`, dan `AUTH_ALLOW_LOCAL_HTTP=true` pada environment lokal. Koneksi lokal tetap memakai database pengembangan terpisah; jangan menjalankan fixture tes pada hosting.
 

@@ -27,6 +27,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci --include=dev --include=optional
+      - name: Check production dependency security
+        run: npm audit --omit=dev --audit-level=high
       - name: Check types and unit tests
         run: npm run check
       - name: Build production Node app
