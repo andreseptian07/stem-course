@@ -6,11 +6,13 @@ Target: `https://course.ypi-baitussalam.or.id`, pada paket Web/Cloud dengan Node
 
 Source sekarang menjalankan **Next.js pada Node.js**, memakai MariaDB dan login email/password sendiri. `npm run build` membuat build Next.js produksi; `npm start` menjalankan server Node. Pool MariaDB dipertahankan per proses. Header identitas Sites/ChatGPT tidak digunakan sebagai login.
 
-GitHub Actions memeriksa tipe, tes unit, build Node, migrasi/query pada MariaDB 10.11 sementara, autentikasi, dan alur HTTP produksi. CI tidak memakai server/password Hostinger dan belum menjadi job deployment. Tampilan Site lama tidak berubah sampai ada deployment ke hosting yang dituju.
+GitHub Actions memeriksa tipe, tes unit, build Node, migrasi/query pada MariaDB 10.11 dan 11.8 sementara, autentikasi, dan alur HTTP produksi termasuk data dashboard owner setelah login. CI tidak memakai server/password Hostinger dan belum menjadi job deployment. Tampilan Site lama tidak berubah sampai ada deployment ke hosting yang dituju.
 
 Pada **7 Oktober 2026**, deployment nyata Next.js/Node.js 22 dari GitHub berhasil di `https://course.ypi-baitussalam.or.id`. Hostinger menunjukkan SSL dan deploy otomatis aktif untuk branch `main`. Pemeriksaan HTTPS menemukan `/login` dan `/api/catalog` merespons 200, serta dashboard anonim mengalihkan ke login. API katalog berhasil membaca MariaDB; belum ada course yang diterbitkan.
 
 Database khusus course sebelumnya dipastikan kosong, lalu dua migrasi berhasil diterapkan; jumlah tabel terverifikasi 23. Koneksi memakai TLS dengan verifikasi sertifikat/hostname. Akun owner belum dibuat pada pemeriksaan awal, sehingga login admin dan perjalanan peserta/mentor nyata belum diuji. Tidak ada impor otomatis peserta/progres dari D1; perubahan penyedia login menghasilkan ID akun baru. Bila ingin memindahkan data Site lama, lakukan pemetaan akun dan uji import terpisah dahulu.
+
+Pemeriksaan lanjutan setelah operator membuat owner menemukan akun admin aktif dan login berhasil. Pembacaan dashboard sempat gagal dengan `ER_CANT_AGGREGATE_2COLLATIONS`: collation sesi hosting berbeda dari parameter prepared statement meskipun driver meminta `utf8mb4_bin`. Adapter sekarang menjalankan `SET NAMES utf8mb4 COLLATE utf8mb4_bin` pada setiap pengambilan koneksi untuk membaca maupun menulis. Ini menyelaraskan sesi dengan collation tabel aplikasi tanpa mengubah tabel/data atau pengaturan global server. Pembacaan data dashboard pada database hosting berhasil menggunakan adapter yang diperbaiki; deployment dan pengujian pengguna tetap diperlukan untuk memastikan runtime web sudah memakai versi tersebut.
 
 ## 1. Periksa database dan buat tabel
 

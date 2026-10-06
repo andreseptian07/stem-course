@@ -38,6 +38,13 @@ try {
   assert.equal(ownerResponse.status, 200);
   const owner = session(ownerResponse);
   assert.equal((await ownerResponse.json()).redirect, "/dashboard");
+  const ownerAccount = await fetch(base + "/api/account", { headers: { Cookie: owner } });
+  assert.equal(ownerAccount.status, 200, "Owner dashboard data must load after login.");
+  assert.match(ownerAccount.headers.get("cache-control"), /no-store/);
+  const ownerData = await ownerAccount.json();
+  assert.equal(ownerData.user.role, "owner");
+  assert.equal(ownerData.user.email, "operator@ci.example");
+  assert.ok(ownerData.profile);
   const course = "esp32-starter";
   const registration = await post("/api/auth", { action: "register", email: "web-learner@ci.example", displayName: "Peserta Web", password: "CI-web-learner-passphrase-only" });
   assert.equal(registration.status, 201);
@@ -67,7 +74,7 @@ try {
   assert.equal((await fetch(base + "/api/access", { headers: { Cookie: owner } })).status, 200, "GET logout must not mutate the session.");
   assert.equal((await post("/api/auth", { action: "logout" }, owner)).status, 200);
   assert.equal((await fetch(base + "/api/access", { headers: { Cookie: owner } })).status, 401);
-  console.log("Node production HTTP smoke passed: login, secure cookies, canonical origin, pending/active/suspended access, enrollment, header forgery, logout, and browser runner.");
+  console.log("Node production HTTP smoke passed: login, owner dashboard, secure cookies, canonical origin, pending/active/suspended access, enrollment, header forgery, logout, and browser runner.");
 } finally {
   if (child.exitCode === null) {
     const exited = once(child, "exit"); child.kill("SIGTERM");
