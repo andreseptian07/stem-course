@@ -9,6 +9,7 @@ import {
   AppError,
 } from "@/lib/server";
 import { emptyProfile, profileSchema, dashboardCourse } from "@/lib/account";
+import { classAgenda } from "@/lib/classes";
 import type { Course } from "@/lib/model";
 export const dynamic = "force-dynamic";
 function failure(e: unknown) {
@@ -60,13 +61,16 @@ export async function GET() {
         .bind(u.id, u.role, new Date().toISOString())
         .all()
     ).results;
+    const agenda = [...sessions, ...(await classAgenda(db(), u))].sort(
+      (a: any, b: any) => a.startsAt.localeCompare(b.startsAt),
+    );
     return json({
       user: { ...u, email: signed!.email },
       profile: p
         ? { ...JSON.parse(p.data), version: p.version }
         : emptyProfile(u.name),
       courses,
-      sessions,
+      sessions: agenda,
     });
   } catch (e) {
     return failure(e);

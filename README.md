@@ -23,6 +23,9 @@ Latihan gratis Python (Pyodide) dan JavaScript berjalan di browser pada iframe o
 - Diskusi per materi dan balasan mentor; pembaruan berkala 15 detik, bukan panggilan suara/video langsung.
 - Jadwal sesi online/offline dalam WIB, kapasitas, daftar/batal ikut, tautan meeting eksternal. Video conference disediakan melalui layanan pilihan pengajar.
 - Admin materi, aturan kuis, latihan kode, jadwal, progres peserta, dan reset percobaan.
+- Kelas `/classes`: owner membuat kelompok untuk satu course, menugaskan mentor, mengatur kapasitas dan periode, menyetujui peserta, serta mengarsipkan kelas. Mentor dipilih dari akun yang sudah pernah masuk; penugasan berlaku hanya pada kelas tersebut.
+- Ruang kelas menyediakan diskusi, pengumuman mentor, sesi online/offline dalam WIB, progres per materi, dan feedback pribadi. Peserta hanya melihat feedback untuk dirinya; daftar peserta dan progres hanya tersedia untuk owner/mentor kelas. Reset kuota percobaan tidak memberikan kelulusan.
+- Agenda dashboard menggabungkan sesi umum yang didaftarkan dan sesi dari kelas yang diikuti/dimentori. Sesi kelas menggunakan tautan meeting eksternal; belum ada rekaman, absensi, atau pengingat otomatis. Course tidak dapat diganti setelah kelas dibuat; progres tetap melekat pada akun dan course meskipun keanggotaan kelas berakhir.
 
 ## Menjalankan lokal
 
@@ -34,7 +37,7 @@ Skema: `db/schema.ts`. Migrasi awal: `drizzle/0000_previous_toxin.sql`. Untuk pe
 
 Versi awal diterbitkan privat untuk pemilik melalui Sites dengan Sign in with ChatGPT. Header identitas hanya tepercaya di belakang gateway autentikasi Sites; jangan mengekspos Worker langsung ke internet tanpa gateway yang menghapus header identitas dari klien.
 
-`OWNER_SETUP_ENABLED=true` digunakan hanya pada deployment privat awal. Pengguna pertama yang terautentikasi disimpan sebagai owner secara atomik di tabel settings. Setelah pemilik berhasil masuk, operator sebaiknya mengubah flag menjadi `false` sebelum memperluas akses. Owner tetap tersimpan walaupun flag dimatikan. Akses peserta umum, onboarding komersial, pembayaran, sertifikat, beberapa mentor dengan peran terpisah, backup/restore operasional, moderasi, dan load test belum menjadi bagian MVP ini.
+`OWNER_SETUP_ENABLED=true` digunakan hanya pada deployment privat awal. Pengguna pertama yang terautentikasi disimpan sebagai owner secara atomik di tabel settings. Setelah pemilik berhasil masuk, operator sebaiknya mengubah flag menjadi `false` sebelum memperluas akses. Owner tetap tersimpan walaupun flag dimatikan. Penugasan mentor atau persetujuan peserta kelas tidak memberikan izin akses Site: akun lain perlu mendapat akses Site dan masuk dahulu sebelum muncul pada pilihan akun kelas. Site saat ini tetap privat untuk pemilik. Akses peserta umum, onboarding komersial, pembayaran, sertifikat, peran mentor global untuk authoring course, backup/restore operasional, moderasi, dan load test belum menjadi bagian MVP ini.
 
 ## Mengaktifkan pemeriksaan kode
 
@@ -49,7 +52,7 @@ Tanpa endpoint, hanya tombol penilaian resmi dinonaktifkan; latihan browser teta
 
 ```sh
 npx tsc --noEmit
-node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs
+node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs
 npm run build
 ```
 
@@ -57,10 +60,13 @@ Pengujian aturan mencakup syarat progres, revisi, penilaian multi-jawaban, penye
 
 Tambahan `node tests/account-api.mjs` dijalankan hanya dengan pratinjau localhost dan mock login aktif. Tes ini menyimpan ulang profil lokal tanpa mengubah isi, menaikkan versinya, serta mendaftarkan course contoh. Pemeriksaan mencakup akses anonim, penolakan role/ID akun lain, origin, konflik versi, persistensi, privasi katalog, dan enrollment idempotent. Jangan arahkan tes ini ke hosting produksi.
 
+`node tests/classes-api.mjs` membuat kelas dan pesan uji pada localhost. Tes SQLite kelas mencakup kapasitas, konflik versi, privasi feedback, pencabutan mentor/keanggotaan saat penulisan, agenda, arsip, progres berdasarkan revisi, dan reset percobaan. Migrasi tambahan `0003` menambahkan tabel kelas, peserta, pesan, feedback, serta jadwal; data contoh pengujian lokal tidak dipindahkan ke produksi.
+
 ## Struktur kode
 
 - `app/studio.tsx`, `app/admin.tsx`: pengalaman peserta dan pengelola.
 - `app/api/studio/route.ts`: API terautentikasi, otorisasi dan penyimpanan.
+- `app/classroom.tsx`, `app/api/classes/route.ts`, `lib/classes.ts`: antarmuka kelas, API, dan aturan akses per kelas.
 - `lib/rules.ts`, `lib/validation.ts`: aturan progres dan validasi.
 - `lib/judge.ts`: adapter eksekusi terisolasi.
 - `lib/server.ts`, `db/schema.ts`, `drizzle/`: data, role, dan migrasi.

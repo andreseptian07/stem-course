@@ -74,6 +74,8 @@ export function dashboardCourse(
 export type DashboardCourse = ReturnType<typeof dashboardCourse>;
 export type AccountSession = {
   id: string;
+  classId?: string;
+  className?: string;
   courseId: string;
   courseTitle: string;
   title: string;

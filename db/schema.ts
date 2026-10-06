@@ -109,3 +109,74 @@ export const rsvps = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.sessionId, t.userId] })],
 );
+
+export const cohorts = sqliteTable("cohorts", {
+  id: text("id").primaryKey(),
+  courseId: text("course_id").notNull(),
+  mentorId: text("mentor_id"),
+  name: text("name").notNull(),
+  description: text("description").notNull().default(""),
+  startsAt: text("starts_at"),
+  endsAt: text("ends_at"),
+  capacity: integer("capacity").notNull(),
+  status: text("status").notNull().default("open"),
+  version: integer("version").notNull().default(1),
+  createdAt: text("created_at").notNull(),
+});
+export const cohortMembers = sqliteTable(
+  "cohort_members",
+  {
+    classId: text("class_id").notNull(),
+    userId: text("user_id").notNull(),
+    status: text("status").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.classId, t.userId] }),
+    index("cohort_members_user").on(t.userId, t.status),
+  ],
+);
+export const cohortPosts = sqliteTable(
+  "cohort_posts",
+  {
+    id: text("id").primaryKey(),
+    classId: text("class_id").notNull(),
+    userId: text("user_id").notNull(),
+    name: text("name").notNull(),
+    role: text("role").notNull(),
+    kind: text("kind").notNull(),
+    body: text("body").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("cohort_posts_class_time").on(t.classId, t.createdAt)],
+);
+export const cohortFeedback = sqliteTable(
+  "cohort_feedback",
+  {
+    id: text("id").primaryKey(),
+    classId: text("class_id").notNull(),
+    studentId: text("student_id").notNull(),
+    mentorId: text("mentor_id").notNull(),
+    mentorName: text("mentor_name").notNull(),
+    body: text("body").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("cohort_feedback_recipient").on(t.classId, t.studentId, t.createdAt),
+  ],
+);
+export const cohortSessions = sqliteTable(
+  "cohort_sessions",
+  {
+    id: text("id").primaryKey(),
+    classId: text("class_id").notNull(),
+    title: text("title").notNull(),
+    kind: text("kind").notNull(),
+    startsAt: text("starts_at").notNull(),
+    duration: integer("duration").notNull(),
+    location: text("location").notNull(),
+    url: text("url").notNull(),
+    version: integer("version").notNull().default(1),
+  },
+  (t) => [index("cohort_sessions_class_time").on(t.classId, t.startsAt)],
+);

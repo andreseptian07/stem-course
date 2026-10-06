@@ -17,6 +17,7 @@ import {
   Loader2,
   Check,
   Settings2,
+  Users,
 } from "lucide-react";
 import type { AccountState, Profile, DashboardCourse } from "@/lib/account";
 import "./account.css";
@@ -216,6 +217,10 @@ export default function Account({
             >
               <UserRound size={19} />
               Profil saya
+            </a>
+            <a href="/classes" onClick={guard}>
+              <Users size={19} />
+              Kelas & mentor
             </a>
             <a href="/learn?view=sessions" onClick={guard}>
               <CalendarDays size={19} />
@@ -435,7 +440,11 @@ export default function Account({
                           )}
                         </div>
                         <div>
-                          <span>{s.courseTitle}</span>
+                          <span>
+                            {s.className
+                              ? `${s.className} · ${s.courseTitle}`
+                              : s.courseTitle}
+                          </span>
                           <h3>{s.title}</h3>
                           <p>
                             <Clock3 size={15} />
@@ -459,7 +468,11 @@ export default function Account({
                         ) : (
                           <a
                             className="secondary button-link"
-                            href="/learn?view=sessions"
+                            href={
+                              s.classId
+                                ? `/classes?class=${encodeURIComponent(s.classId)}`
+                                : "/learn?view=sessions"
+                            }
                           >
                             Lihat sesi
                           </a>
