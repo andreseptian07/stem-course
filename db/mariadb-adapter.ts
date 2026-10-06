@@ -37,10 +37,19 @@ class MariaDatabase implements PlatformDatabase {
   prepare(sql: string) { return new MariaStatement(this, sql); }
   async read<T>(statement: MariaStatement): Promise<T[]> {
     if (!/^\s*SELECT\b/i.test(statement.sql)) throw new Error("Gunakan run/batch untuk penulisan database.");
+    let connection: PoolConnection | undefined;
     try {
-      const [rows] = await this.pool.execute<RowDataPacket[]>(statement.sql, statement.values);
+      connection = await this.pool.getConnection();
+      await this.initializeSession(connection);
+      const [rows] = await connection.execute<RowDataPacket[]>(statement.sql, statement.values);
       return rows as T[];
     } catch (error) { throw new DatabaseExecutionError(error); }
+    finally { connection?.release(); }
+  }
+  private async initializeSession(connection: PoolConnection) {
+    // Hosting init_connect can override the driver's handshake collation.
+    // Normalize every checkout before preparing SQL, including reused sessions.
+    await connection.query("SET NAMES utf8mb4 COLLATE utf8mb4_bin");
   }
   async batch(statements: DatabaseStatement[]): Promise<WriteResult[]> {
     if (!statements.length) return [];
@@ -56,6 +65,7 @@ class MariaDatabase implements PlatformDatabase {
     let transaction = false;
     try {
       connection = await this.pool.getConnection();
+      await this.initializeSession(connection);
       const [db] = await connection.query<RowDataPacket[]>("SELECT DATABASE() AS name");
       const name = `stem-write-${createHash("sha256").update(String(db[0].name)).digest("hex").slice(0, 48)}`;
       const [locks] = await connection.execute<RowDataPacket[]>("SELECT GET_LOCK(?, 10) AS acquired", [name]);

@@ -37,12 +37,16 @@ jobs:
         run: npm run build
 
   mariadb:
-    name: MariaDB, authentication and Node HTTP
+    name: MariaDB ${{ matrix.mariadb }}, authentication and Node HTTP
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        mariadb: ['10.11', '11.8']
     services:
       database:
-        image: mariadb:10.11
+        image: mariadb:${{ matrix.mariadb }}
         env:
           # Throwaway credentials for this isolated CI service, never Hostinger.
           MARIADB_ROOT_PASSWORD: stem-ci-disposable

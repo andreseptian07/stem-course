@@ -10,7 +10,7 @@ test("MariaDB foundation on a disposable CI database", {
   // Never permit this fixture writer to target the user's hosting database.
   assert.equal(process.env.DB_HOST, "127.0.0.1");
   assert.equal(process.env.DB_NAME, "stem_ci");
-  const { pool, db } = createMariaDb();
+  const { pool, db, database } = createMariaDb();
   try {
     await t.test("new database receives the schema and migration journal", async () => {
       assert.equal(await applyMariaDbMigrations(pool), 2);
@@ -22,6 +22,28 @@ test("MariaDB foundation on a disposable CI database", {
         assert.equal(table.engine, "InnoDB");
         assert.equal(table.collation, "utf8mb4_bin");
       }
+    });
+    await t.test("hosting collation overrides are normalized on reused read and write connections", async () => {
+      const overrideSessions = async () => {
+        const connections = await Promise.all(Array.from({ length: 3 }, () => pool.getConnection()));
+        try {
+          await Promise.all(connections.map((c) => c.query("SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci")));
+        } finally { connections.forEach((c) => c.release()); }
+      };
+      await overrideSessions();
+      const rows = await Promise.all(Array.from({ length: 3 }, () => database
+        .prepare("SELECT @@collation_connection AS collation, COLLATION(?) AS parameterCollation, ?='owner' AS isOwner")
+        .bind("owner", "owner").first()));
+      for (const row of rows) {
+        assert.equal(row.collation, "utf8mb4_bin");
+        assert.equal(row.parameterCollation, "utf8mb4_bin");
+        assert.equal(Number(row.isOwner), 1);
+      }
+      await overrideSessions();
+      const writes = await Promise.all(Array.from({ length: 3 }, () => database
+        .prepare("UPDATE users SET name=? WHERE id=? AND ?='owner'")
+        .bind("unused", "nonexistent-collation-fixture", "owner").run()));
+      assert.ok(writes.every((r) => r.meta.changes === 0));
     });
     await t.test("Unicode names, case-sensitive IDs and large JSON survive round trips", async () => {
       await db.insert(users).values([
