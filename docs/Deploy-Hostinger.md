@@ -9,18 +9,19 @@ Target: `https://course.ypi-baitussalam.or.id`. Pengguna sudah mengonfirmasi pak
 - Runtime sekarang masih Vinext/Cloudflare Workers, database D1, dan autentikasi Sites. **Belum siap dideploy langsung sebagai aplikasi Node.js di Hostinger.**
 - `npm start` sekarang menjalankan Wrangler lokal. Jangan gunakan perintah tersebut untuk server produksi Hostinger.
 - CI belum memeriksa build Node produksi atau melakukan CD. Koneksi deployment Hostinger, DNS subdomain, SSL, dan pengujian multiakun belum dilakukan.
+- Pengguna sudah membuat database MariaDB. Koneksi Node.js, skema dan migrasi awal disiapkan terpisah; lihat [konfigurasi MariaDB dan tempat mengisi password](Configure-MariaDB.md). Koneksi hosting belum diuji dan API utama belum memakai MariaDB.
 
 ## Rancangan migrasi
 
 1. Pertahankan antarmuka TypeScript/React dan fitur course, kuis, kelas, tugas, serta pembatasan akses.
 2. Port runtime ke Next.js pada Node.js, termasuk middleware, routing, konfigurasi build, environment dan assets runner browser. Kesesuaian routing Vinext harus diuji; mengganti perintah build saja tidak cukup.
-3. Gunakan database persisten di luar direktori aplikasi. Evaluasi database MySQL yang tersedia pada paket Hostinger atau PostgreSQL eksternal sebelum implementasi; keduanya membutuhkan port skema/query SQLite. Jangan menyimpan SQLite di filesystem deployment tanpa jaminan persistensi dan backup dari penyedia.
+3. Gunakan MariaDB yang sudah dibuat pada Hostinger. Foundation koneksi/skema tersedia; port query SQLite dan transaksi bisnis masih diperlukan. Database harus persisten dan terpisah dari direktori deployment aplikasi.
 4. Ganti Sign in with ChatGPT milik Sites dengan autentikasi web dan sesi yang diverifikasi server. Opsi awal: provider autentikasi terkelola. Terapkan cookie aman, validasi origin/CSRF, pembatasan percobaan login, dan alur pendaftaran peserta.
 5. Pertahankan persetujuan akun dan mentor per kelas. Buat owner melalui identitas operator yang ditetapkan, bukan pengunjung publik pertama.
 6. Header `oai-authenticated-user-*` dari browser tidak boleh menjadi identitas di Hostinger. Mock login hanya untuk localhost.
 7. Port migrasi database secara terpisah. Jangan mengubah migrasi yang sudah diterapkan pada Site. Tentukan apakah data awal dibuat baru atau diekspor dari D1; pemetaan ID akun harus ditangani karena provider login berubah.
 
-Keputusan database/provider belum diimplementasikan. Periksa fasilitas database dan akses jaringan paket sebelum memilih. Jangan menyalin data uji lokal sebagai data peserta nyata.
+Target database sudah ditentukan sebagai MariaDB Hostinger, tetapi integrasi penuh belum diimplementasikan. Provider login masih perlu ditentukan. Jangan menyalin data uji lokal sebagai data peserta nyata.
 
 ## Repository dan CI
 

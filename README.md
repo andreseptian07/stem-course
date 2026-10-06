@@ -57,6 +57,8 @@ Tanpa endpoint, hanya tombol penilaian resmi dinonaktifkan; latihan browser teta
 
 Persiapan migrasi ke subdomain sendiri dan CI GitHub dijelaskan di [panduan Hostinger](docs/Deploy-Hostinger.md). Workflow GitHub memeriksa tipe dan unit test; port runtime/login/database dan deployment Hostinger belum selesai.
 
+Foundation MariaDB Node.js disiapkan terpisah dari D1: driver mysql2, skema 19 tabel, runner migrasi dengan lock/hash dan uji database sementara CI. Isi password di `.env.local` atau environment aplikasi Hostinger, lalu jalankan `npm run db:check`. Lihat [petunjuk konfigurasi MariaDB](docs/Configure-MariaDB.md). API utama belum menggunakan MariaDB; hasil CI bukan bukti koneksi database Hostinger.
+
 ```sh
 npx tsc --noEmit
 node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/access.test.mjs

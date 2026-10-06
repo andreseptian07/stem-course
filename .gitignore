@@ -48,3 +48,5 @@ next-env.d.ts
 .dev.vars*
 !.env.example
 *.tsbuildinfo
+# Local IDE metadata may contain connection details.
+/.idea/

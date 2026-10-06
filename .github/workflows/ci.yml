@@ -31,3 +31,40 @@ jobs:
         run: npm run check
       # This is CI for the existing source, not a Hostinger deployment job.
       # Add the production Node build after the runtime/database/auth port.
+
+  mariadb:
+    name: MariaDB foundation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      database:
+        image: mariadb:10.11
+        env:
+          # Throwaway credentials for this isolated CI service, never Hostinger.
+          MARIADB_ROOT_PASSWORD: stem-ci-disposable
+          MARIADB_DATABASE: stem_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      MARIADB_INTEGRATION_TEST: 'true'
+      DB_HOST: 127.0.0.1
+      DB_PORT: '3306'
+      DB_USER: root
+      DB_NAME: stem_ci
+      DB_PASSWORD: stem-ci-disposable
+      DB_SSL_MODE: disabled
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --include=dev --include=optional
+      - run: npm run test:mariadb
