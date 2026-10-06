@@ -8,7 +8,7 @@ Source sekarang menjalankan **Next.js pada Node.js**, memakai MariaDB dan login 
 
 GitHub Actions memeriksa tipe, tes unit, build Node, migrasi/query pada MariaDB 10.11 sementara, autentikasi, dan alur HTTP produksi. CI tidak memakai server/password Hostinger dan belum menjadi job deployment. Tampilan Site lama tidak berubah sampai ada deployment ke hosting yang dituju.
 
-Database Hostinger, DNS, SSL, dan akun owner nyata belum dikonfigurasi oleh agent. Source siap untuk uji pemasangan setelah konfigurasi berikut diisi. Tidak ada impor otomatis peserta/progres dari D1; perubahan penyedia login menghasilkan ID akun baru. Untuk pemakaian pertama, gunakan database kosong khusus platform. Bila ingin memindahkan data Site lama, lakukan pemetaan akun dan uji import terpisah dahulu.
+Pada **7 Oktober 2026**, koneksi nyata MariaDB Hostinger berhasil, dengan TLS aktif dan verifikasi sertifikat/hostname. Database khusus course dipastikan kosong, kemudian dua migrasi berhasil diterapkan; jumlah tabel terverifikasi 23. Owner, deployment Node.js, DNS/SSL aplikasi, dan CI/CD deployment belum selesai. Tidak ada impor otomatis peserta/progres dari D1; perubahan penyedia login menghasilkan ID akun baru. Bila ingin memindahkan data Site lama, lakukan pemetaan akun dan uji import terpisah dahulu.
 
 ## 1. Periksa database dan buat tabel
 
@@ -52,18 +52,22 @@ Reset mencabut seluruh sesi akun. Jangan mengirim password ke chat, GitHub, issu
 
 Nama menu dapat berbeda. [Panduan resmi Hostinger](https://www.hostinger.com/support/how-to-deploy-a-nodejs-website-in-hostinger/) mencantumkan dukungan Next.js backend, Node.js 22, integrasi GitHub, dan pengaturan environment.
 
+Lokasi yang ditentukan pengguna, `/home/USER/domains/DOMAIN/public_html/course`, merupakan folder di hosting website utama. Menyalin source ke folder itu saja tidak menyalakan server Next.js. Gunakan deployment **Aplikasi Web Node.js** dan domain yang diarahkan ke aplikasi tersebut; lokasi checkout/proses mengikuti konfigurasi layanan Node.js Hostinger. Simpan kredensial di environment aplikasi, bukan file yang dapat dilayani sebagai aset publik.
+
+Pada pemeriksaan hPanel 7 Oktober 2026, onboarding Node.js awalnya menolak `course.ypi-baitussalam.or.id` karena subdomain sudah aktif. Pengguna menonaktifkan subdomain lama sendiri, lalu pengulangan onboarding menerima subdomain course dan mencapai pilihan impor GitHub. Domain sementara tidak digunakan. Koneksi GitHub, pengaturan build/environment, deployment, dan pengujian login produksi masih harus diselesaikan.
+
 ## 4. Isi environment aplikasi
 
-Gunakan Environment Variables di hPanel. File `.env.local` tidak ikut GitHub, sehingga konfigurasi lokal tidak otomatis tersedia di hosting.
+Gunakan Environment Variables di hPanel. File `.env.local` tidak ikut GitHub, sehingga konfigurasi lokal tidak otomatis tersedia di hosting. Ganti placeholder `HOSTINGER_MYSQL_HOST`, `HOSTINGER_MYSQL_USER`, dan `HOSTINGER_MYSQL_DATABASE` dengan nilai hPanel atau file lokal; jangan menyimpan detail koneksi asli di repository publik.
 
 ```dotenv
 APP_URL=https://course.ypi-baitussalam.or.id
 AUTH_REGISTRATION_ENABLED=false
 AUTH_ALLOW_LOCAL_HTTP=false
-DB_HOST=153.92.15.31
+DB_HOST=HOSTINGER_MYSQL_HOST
 DB_PORT=3306
-DB_USER=u209357671_course_bts
-DB_NAME=u209357671_course_bts
+DB_USER=HOSTINGER_MYSQL_USER
+DB_NAME=HOSTINGER_MYSQL_DATABASE
 DB_PASSWORD=ISI_SENDIRI_DI_HPANEL
 DB_POOL_LIMIT=3
 DB_SSL_MODE=required
@@ -71,7 +75,7 @@ JUDGE0_ENABLED=false
 NEXT_TELEMETRY_DISABLED=1
 ```
 
-Masukkan setiap nilai hPanel tanpa kutip pembungkus. Isi `DB_SSL_CA_BASE64` jika operator database menyediakan CA khusus. Konfirmasikan nilai `DB_HOST` yang tepat untuk aplikasi Node Hostinger; IP di atas mengikuti informasi pengguna, belum diverifikasi.
+Masukkan setiap nilai hPanel tanpa kutip pembungkus. Hostname database yang disediakan pengguna sudah lolos pemeriksaan koneksi/TLS dari komputer operator tanpa CA tambahan. Uji kembali dari runtime Node.js hosting. Isi `DB_SSL_CA_BASE64` jika operator database menyediakan CA khusus; jangan mengganti verifikasi TLS dengan koneksi tanpa enkripsi.
 
 `APP_URL` adalah origin HTTPS persis yang dibuka browser, tanpa path. Bila pertama kali menguji dengan domain sementara HTTPS Hostinger, gunakan origin sementara tersebut sebagai `APP_URL`, lalu ganti dan redeploy setelah domain course aktif. Origin POST dipatok ke konfigurasi ini; domain sementara tidak dapat menulis jika APP_URL masih domain course. Jangan mengubahnya menjadi wildcard.
 

@@ -1,18 +1,18 @@
 # Konfigurasi MariaDB Hostinger
 
-Database dari pengguna:
+Isi konfigurasi dari hPanel database Anda. Nilai berikut adalah placeholder, bukan kredensial yang dapat langsung digunakan. Detail koneksi asli disimpan di `.env.local` yang diabaikan Git atau environment aplikasi Hostinger.
 
 | Variabel | Nilai |
 | --- | --- |
-| `DB_HOST` | `153.92.15.31` |
+| `DB_HOST` | `HOSTINGER_MYSQL_HOST` |
 | `DB_PORT` | `3306` |
-| `DB_USER` | `u209357671_course_bts` |
-| `DB_NAME` | `u209357671_course_bts` |
+| `DB_USER` | `HOSTINGER_MYSQL_USER` |
+| `DB_NAME` | `HOSTINGER_MYSQL_DATABASE` |
 | `DB_PASSWORD` | Diisi sendiri, tidak dikirim ke chat atau GitHub |
 
 ## Tempat memasukkan password
 
-Untuk pengujian dari komputer ini, file `platform/.env.local` sudah dibuat dari template, dengan password kosong. Jika file sebelumnya sudah ada, setup mempertahankan isinya. Isi baris berikut di file tersebut:
+Untuk pengujian dari komputer ini, gunakan file `platform/.env.local`. Password sudah diisi pengguna untuk pemasangan awal; jangan menimpa file tersebut dengan template. Untuk instalasi lain, isi baris berikut:
 
 ```dotenv
 DB_PASSWORD="MASUKKAN_PASSWORD_ANDA_DI_SINI"
@@ -74,6 +74,6 @@ Pengujian integrasi memakai service MariaDB 10.11 di GitHub Actions. Selain foun
 
 MariaDB tidak memiliki `rowid`: daftar course diurutkan menurut ID, dan pesan dengan timestamp yang sama memakai ID sebagai penentu urutan. Ini stabil tetapi tidak menjamin urutan pembuatan pada timestamp yang sama. Judul JSON dibaca tanpa kutip pembungkus, nilai `published=false` tetap tersembunyi, dan akhir sesi dihitung dari waktu UTC dengan dukungan pecahan detik. Fitur coding belum diaktifkan dan tes adapter tidak mengeksekusi program peserta pada layanan Judge0 nyata.
 
-Koneksi ke database Hostinger belum diverifikasi karena password diisi manual oleh pengguna. Hasil pengujian CI tidak membuktikan hostname, izin akun, TLS atau jaringan Hostinger sudah benar.
+Pada **7 Oktober 2026**, koneksi nyata ke database Hostinger khusus course berhasil, server **11.8.9-MariaDB-log**, dengan TLS aktif serta verifikasi sertifikat/hostname tetap diwajibkan. Database dipastikan kosong sebelum dua migrasi diterapkan. Pemeriksaan setelah migrasi menemukan **23 tabel**, **2 riwayat migrasi**, dan belum ada owner. Password tidak ditampilkan dan tidak masuk repository. Koneksi ini diuji dari komputer operator; koneksi dari proses Node.js di Hostinger masih harus diuji setelah deployment.
 
 Implementasi database Node.js hanya diimpor modul server, bukan halaman browser. Runtime Site lama tidak menjadi target build ini. Pengujian CI tidak menggunakan password atau server Hostinger; fixture hanya boleh berjalan pada host `127.0.0.1` dengan nama database `stem_ci`.
