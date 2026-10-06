@@ -1,0 +1,33 @@
+name: Platform checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    name: TypeScript and learning rules
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci --include=dev --include=optional
+      - name: Check types and unit tests
+        run: npm run check
+      # This is CI for the existing source, not a Hostinger deployment job.
+      # Add the production Node build after the runtime/database/auth port.

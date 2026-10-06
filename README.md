@@ -55,6 +55,8 @@ Tanpa endpoint, hanya tombol penilaian resmi dinonaktifkan; latihan browser teta
 
 ## Verifikasi
 
+Persiapan migrasi ke subdomain sendiri dan CI GitHub dijelaskan di [panduan Hostinger](docs/Deploy-Hostinger.md). Workflow GitHub memeriksa tipe dan unit test; port runtime/login/database dan deployment Hostinger belum selesai.
+
 ```sh
 npx tsc --noEmit
 node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/access.test.mjs
