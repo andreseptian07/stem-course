@@ -6,7 +6,7 @@ MVP platform e-course berbahasa Indonesia: ruang belajar, authoring course, kuis
 
 TypeScript dan React untuk antarmuka serta API; ekosistem Node.js untuk pengembangan. Starter Vinext menyediakan routing kompatibel Next.js dengan runtime Cloudflare Workers untuk hosting Sites. Penyimpanan menggunakan D1 (SQLite) dan migrasi Drizzle. Runtime produksi ini bukan server Node.js biasa; migrasi ke VPS/Next.js memerlukan penyesuaian adapter database, autentikasi, dan deployment.
 
-Kode peserta dijalankan melalui Judge0 di mesin sandbox terpisah. Bahasa backend tidak membatasi bahasa latihan: adapter mendukung Python, JavaScript, dan C++. Jangan menjalankan kode peserta langsung di proses web atau menonaktifkan sandbox Judge0.
+Latihan gratis Python (Pyodide) dan JavaScript berjalan di browser pada iframe opaque origin dan Web Worker. Hanya contoh publik yang dinilai; hasil tidak dapat meluluskan tes wajib. Penilaian resmi menjalankan kode melalui Judge0 di mesin sandbox terpisah. Bahasa backend tidak membatasi bahasa latihan: adapter mendukung Python, JavaScript, dan C++. Jangan menjalankan kode peserta langsung di proses web atau menonaktifkan sandbox Judge0.
 
 ## Fitur tersedia
 
@@ -40,16 +40,16 @@ Versi awal diterbitkan privat untuk pemilik melalui Sites dengan Sign in with Ch
 
 1. Sediakan layanan Judge0 terisolasi yang mendukung batch submissions. Aktifkan sandbox, matikan akses jaringan peserta, perbarui image keamanan, dan tetapkan kuota biaya di penyedia.
 2. Atur secret `JUDGE0_TOKEN` jika layanan menggunakan X-Auth-Token, serta `JUDGE0_URL` HTTPS melalui environment hosting; bukan formulir peserta atau source code.
-3. Sesuaikan `JUDGE0_PYTHON_ID`, `JUDGE0_JAVASCRIPT_ID`, `JUDGE0_CPP_ID` dengan daftar bahasa pada instalasi Anda. Default 71/63/54 harus diverifikasi pada endpoint tersebut. Adapter bawaan memakai API Judge0 langsung, bukan header RapidAPI.
+3. Sesuaikan `JUDGE0_PYTHON_ID`, `JUDGE0_JAVASCRIPT_ID`, `JUDGE0_CPP_ID` dengan daftar bahasa pada instalasi Anda. Default 71/63/54 harus diverifikasi pada endpoint tersebut. Adapter menerima X-Auth-Token atau secret JUDGE0_API_KEY dengan JUDGE0_API_HOST untuk RapidAPI. Aktifkan JUDGE0_ENABLED setelah konfigurasi ditinjau.
 4. Uji jawaban benar, salah, runtime error, timeout, dan hidden tests end-to-end sebelum peserta diundang. Pengujian unit menggunakan fetch palsu; belum membuktikan sandbox produksi.
 
-Tanpa endpoint, tombol eksekusi dinonaktifkan dengan penjelasan. Pada course contoh, latihan kode wajib akan menahan materi berikutnya; admin dapat menjadikannya opsional untuk mencoba keseluruhan alur sebelum layanan aktif. Penilaian program console tidak membuktikan perangkat ESP32/STM32 atau rangkaian fisik bekerja.
+Tanpa endpoint, hanya tombol penilaian resmi dinonaktifkan; latihan browser tetap tersedia untuk Python/JavaScript. Pada course contoh, latihan kode wajib akan menahan materi berikutnya; admin dapat menjadikannya opsional untuk mencoba keseluruhan alur sebelum layanan aktif. Penilaian program console tidak membuktikan perangkat ESP32/STM32 atau rangkaian fisik bekerja.
 
 ## Verifikasi
 
 ```sh
 npx tsc --noEmit
-node --experimental-strip-types --test tests/rules.test.mjs
+node --experimental-strip-types --test tests/rules.test.mjs tests/code-security.test.mjs
 npm run build
 ```
 
@@ -65,3 +65,7 @@ Tambahan `node tests/account-api.mjs` dijalankan hanya dengan pratinjau localhos
 - `lib/judge.ts`: adapter eksekusi terisolasi.
 - `lib/server.ts`, `db/schema.ts`, `drizzle/`: data, role, dan migrasi.
 - `.openai/hosting.json`: identitas Site; gunakan Site yang sama untuk penerbitan selanjutnya.
+
+Panduan pemasangan terpisah: [Install Judge0 di VPS](docs/Install-Judge0-VPS.md). Migrasi `0002` menambahkan lease polling dan indeks antrean. Reservasi pengiriman/kuota atomik, pembatasan satu pengiriman aktif per akun, lima pengiriman per menit, maksimal 20 attempt aktif global, dan refund kegagalan/timeout tepat sekali. Respons Judge0 dibatasi ukurannya, base64 untuk output non-UTF8, status/token divalidasi, hasil tersembunyi disaring, dan revisi lama tidak meluluskan materi baru. Pengujian SQLite memakai database sementara; tidak mengakses produksi. Uji mesin sandbox produksi masih menunggu layanan yang disediakan pengguna.
+
+`node --experimental-strip-types tests/code-api.mjs` menguji penolakan pemalsuan kelulusan dan membuat course JavaScript uji lokal. Jalankan hanya pada preview localhost.

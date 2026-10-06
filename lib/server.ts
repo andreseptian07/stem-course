@@ -3,6 +3,7 @@ import { getChatGPTUser } from "@/app/chatgpt-auth";
 import type { Course, Progress } from "./model";
 import { sampleCourse } from "./seed";
 import { blockingLesson } from "./rules";
+import { validateConfig } from "./judge";
 import type { JudgeConfig } from "./judge";
 export class AppError extends Error {
   constructor(
@@ -25,17 +26,24 @@ export function config() {
 }
 export function judgeConfig(): JudgeConfig | null {
   const e = config();
-  return e.JUDGE0_URL
-    ? {
-        url: e.JUDGE0_URL,
-        token: e.JUDGE0_TOKEN,
-        languageIds: {
-          python: Number(e.JUDGE0_PYTHON_ID || 71),
-          javascript: Number(e.JUDGE0_JAVASCRIPT_ID || 63),
-          cpp: Number(e.JUDGE0_CPP_ID || 54),
-        },
-      }
-    : null;
+  if (e.JUDGE0_ENABLED !== "true" || !e.JUDGE0_URL) return null;
+  const cfg = {
+    url: e.JUDGE0_URL,
+    token: e.JUDGE0_TOKEN,
+    apiKey: e.JUDGE0_API_KEY,
+    apiHost: e.JUDGE0_API_HOST,
+    languageIds: {
+      python: Number(e.JUDGE0_PYTHON_ID || 71),
+      javascript: Number(e.JUDGE0_JAVASCRIPT_ID || 63),
+      cpp: Number(e.JUDGE0_CPP_ID || 54),
+    },
+  };
+  try {
+    validateConfig(cfg);
+    return cfg;
+  } catch {
+    return null;
+  }
 }
 export async function identity() {
   const signed = await getChatGPTUser();

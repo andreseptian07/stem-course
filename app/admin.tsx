@@ -46,6 +46,44 @@ function Field({
     </label>
   );
 }
+function JudgeCheck() {
+  const [result, setResult] = useState<any>(null),
+    [busy, setBusy] = useState(false);
+  async function check() {
+    setBusy(true);
+    try {
+      setResult(await api("/api/judge", {}));
+    } catch (e) {
+      setResult({
+        message: e instanceof Error ? e.message : "Pemeriksaan belum berhasil.",
+      });
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div>
+      <button className="secondary" disabled={busy} onClick={check}>
+        {busy ? "Memeriksa…" : "Periksa koneksi dan konfigurasi"}
+      </button>
+      {result && (
+        <div role="status">
+          <p>
+            {result.message ||
+              (result.passed
+                ? "Konfigurasi dasar lolos. Tetap uji sandbox sebelum kelas dimulai."
+                : "Konfigurasi layanan belum memenuhi pemeriksaan dasar.")}
+          </p>
+          {result.checks?.map((c: any) => (
+            <p key={c.label}>
+              {c.ok ? "✓" : "×"} {c.label}
+            </p>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 export default function Admin({
   reload,
   onPreview,
@@ -304,7 +342,12 @@ export default function Admin({
               ? "Endpoint sudah dikonfigurasi"
               : "Belum terhubung"}
           </span>
-          <h2>Pemeriksaan kode dengan Judge0</h2>
+          <h2>Latihan gratis & penilaian resmi</h2>
+          <p>
+            Gunakan tombol “Coba gratis di browser” untuk Python dan JavaScript.
+            C++ serta penilaian resmi memerlukan layanan server.
+          </p>
+          <JudgeCheck />
           <p>
             Latihan dinilai berdasarkan test case. Input dan jawaban tersembunyi
             tetap berada di server; kode dijalankan pada sandbox terpisah dengan
@@ -327,16 +370,19 @@ export default function Admin({
             </div>
           </div>
           <div className="intro-note">
-            Pengelola teknis perlu mengatur JUDGE0_URL dan, bila diperlukan,
-            JUDGE0_TOKEN pada konfigurasi server. Kredensial tidak dimasukkan ke
-            materi. Setelah terhubung, uji satu solusi benar, solusi salah, dan
-            kode yang melewati batas waktu.
+            Untuk penilaian resmi, pengelola teknis perlu mengatur JUDGE0_URL,
+            JUDGE0_TOKEN (atau kredensial provider), dan JUDGE0_ENABLED pada
+            konfigurasi server. Kredensial tidak dimasukkan ke materi. Setelah
+            terhubung, uji satu solusi benar, solusi salah, dan kode yang
+            melewati batas waktu.
           </div>
           <p className="small">
-            Latihan kode tidak bisa dijalankan sebelum layanan dihubungkan.
-            Konfigurasi endpoint belum membuktikan layanan sehat. Untuk
-            ESP32/STM32, tes ini memeriksa logika program; perilaku perangkat
-            fisik tetap memerlukan praktik dan penilaian mentor.
+            Latihan Python dan JavaScript gratis dapat dijalankan di browser
+            tanpa layanan tambahan. Hasil latihan browser tidak membuka
+            prasyarat coding wajib. Konfigurasi endpoint belum membuktikan
+            layanan sehat. Untuk ESP32/STM32, tes ini memeriksa logika program;
+            perilaku perangkat fisik tetap memerlukan praktik dan penilaian
+            mentor.
           </p>
         </section>
       ) : (

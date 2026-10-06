@@ -1323,3 +1323,19 @@ td small {
     flex-wrap: wrap;
   }
 }
+
+.browser-practice {
+  margin: 20px 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--line);
+}
+.browser-practice > p {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.browser-practice pre {
+  max-height: 220px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

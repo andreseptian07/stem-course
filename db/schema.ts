@@ -62,9 +62,14 @@ export const attempts = sqliteTable(
     state: text("state").notNull(),
     score: integer("score").notNull().default(0),
     data: text("data").notNull(),
+    pollAt: integer("poll_at").notNull().default(0),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [index("attempts_user_course").on(t.userId, t.courseId)],
+  (t) => [
+    index("attempts_user_course").on(t.userId, t.courseId),
+    index("attempts_user_time").on(t.userId, t.createdAt),
+    index("attempts_code_state_time").on(t.kind, t.state, t.createdAt),
+  ],
 );
 export const messages = sqliteTable(
   "messages",

@@ -33,6 +33,7 @@ import type {
   Block,
 } from "@/lib/model";
 import Admin from "./admin";
+import BrowserPractice from "./browser-practice";
 export async function api(path = "/api/studio", body?: unknown) {
   const r = await fetch(
     path,
@@ -802,6 +803,7 @@ function CodePanel({
     [error, setError] = useState(""),
     [attempt, setAttempt] = useState(""),
     [history, setHistory] = useState<any[]>([]);
+  const requestId = useRef(crypto.randomUUID());
   const getHistory = useCallback(async () => {
     try {
       const d = await api(
@@ -809,7 +811,8 @@ function CodePanel({
       );
       setHistory(d.attempts);
       const pending = d.attempts.find(
-        (a: any) => a.kind === "code" && a.state === "pending",
+        (a: any) =>
+          a.kind === "code" && ["pending", "submitting"].includes(a.state),
       );
       if (pending) setAttempt(pending.id);
     } catch {}
@@ -832,6 +835,7 @@ function CodePanel({
           return;
         }
         setResult(r);
+        requestId.current = crypto.randomUUID();
         setAttempt("");
         setBusy(false);
         await refresh();
@@ -860,10 +864,12 @@ function CodePanel({
         courseId,
         lessonId: lesson.id,
         source,
+        requestId: requestId.current,
       });
       setAttempt(r.id);
     } catch (e: any) {
       setError(e.message);
+      if (e.status && e.status < 500) requestId.current = crypto.randomUUID();
       setBusy(false);
     }
   }
@@ -904,7 +910,11 @@ function CodePanel({
         aria-label="Editor kode"
         spellCheck={false}
         value={source}
-        onChange={(e) => setSource(e.target.value)}
+        maxLength={20000}
+        onChange={(e) => {
+          setSource(e.target.value);
+          requestId.current = crypto.randomUUID();
+        }}
         onKeyDown={(e) => {
           if (e.key === "Tab") {
             e.preventDefault();
@@ -939,13 +949,15 @@ function CodePanel({
           ) : (
             <CirclePlay size={16} />
           )}
-          Jalankan pemeriksaan
+          Kirim untuk penilaian resmi
         </button>
       </div>
+      <BrowserPractice exercise={ex} source={source} />
       {!ready && (
         <div className="feedback warning">
-          Pemeriksaan otomatis belum diaktifkan. Pengelola perlu menghubungkan
-          layanan sandbox. Kode belum dijalankan atau dinilai.
+          Penilaian resmi di server belum diaktifkan. Gunakan latihan browser
+          untuk mencoba contoh. Tes coding wajib tetap menunggu pemeriksa server
+          atau review mentor.
         </div>
       )}
       {error && (

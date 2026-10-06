@@ -13,10 +13,13 @@ import {
 } from "@/lib/server";
 import { publicCourse, gradeQuiz, canComplete, progressFor } from "@/lib/rules";
 import { courseSchema, sessionSchema } from "@/lib/validation";
-import { submitCode, pollCode } from "@/lib/judge";
+import { JudgeError } from "@/lib/judge";
+import { startAttempt, readAttempt, CodeError } from "@/lib/code-attempts";
 import type { Course } from "@/lib/model";
 export const dynamic = "force-dynamic";
 function error(e: unknown) {
+  if (e instanceof CodeError) return json({ error: e.message }, e.status);
+  if (e instanceof JudgeError) return json({ error: e.message }, 503);
   if (e instanceof AppError) return json({ error: e.message }, e.status);
   if (e instanceof z.ZodError)
     return json({ error: e.issues[0]?.message || "Isian belum valid." }, 400);
@@ -108,79 +111,10 @@ export async function GET(req: Request) {
         .bind(q.get("attempt"), u.id)
         .first<any>();
       if (!a) throw new AppError(404, "Percobaan tidak ditemukan.");
-      const data = JSON.parse(a.data);
-      if (a.state !== "pending")
-        return json({
-          id: a.id,
-          state: a.state,
-          score: a.score,
-          ...data.result,
-        });
-      const cfg = judgeConfig();
-      if (!cfg) throw new AppError(503, "Pemeriksa kode belum dihubungkan.");
-      if (Date.now() - Date.parse(a.created_at) > 300000) {
-        await db()
-          .prepare(
-            "UPDATE attempts SET state='error' WHERE id=? AND state='pending'",
-          )
-          .bind(a.id)
-          .run();
-        return json({
-          id: a.id,
-          state: "error",
-          error:
-            "Pemeriksaan melewati batas waktu. Hubungi mentor jika kuota percobaan habis.",
-        });
-      }
-      const result = await pollCode(cfg, data.tokens);
-      if (result.some((r) => r.status.id <= 2))
-        return json({ id: a.id, state: "pending" });
-      const passed = result.every((r) => r.status.id === 3);
-      const score = Math.round(
-        (result.filter((r) => r.status.id === 3).length / result.length) * 100,
-      );
-      const output = {
-        passed,
-        tests: result.map((r, i) => ({
-          index: i + 1,
-          hidden: data.hidden[i],
-          passed: r.status.id === 3,
-          status: r.status.description,
-          ...(!data.hidden[i]
-            ? {
-                stdout: r.stdout,
-                stderr: r.stderr,
-                compileOutput: r.compile_output,
-              }
-            : {}),
-        })),
-      };
+      if (a.kind !== "code") throw new AppError(400, "Bukan percobaan kode.");
       const c = await course(a.course_id, u);
       const l = c.lessons.find((l) => l.id === a.lesson_id);
-      const current = l?.revision === a.revision;
-      const statements = [
-        db()
-          .prepare(
-            "UPDATE attempts SET state='finished',score=?,data=? WHERE id=? AND state='pending'",
-          )
-          .bind(score, JSON.stringify({ ...data, result: output }), a.id),
-      ];
-      if (current && passed)
-        statements.push(
-          db()
-            .prepare(
-              "UPDATE progress SET code_passed=1 WHERE user_id=? AND course_id=? AND lesson_id=? AND revision=?",
-            )
-            .bind(u.id, a.course_id, a.lesson_id, a.revision),
-        );
-      await db().batch(statements);
-      return json({
-        id: a.id,
-        state: "finished",
-        score,
-        ...output,
-        stale: !current,
-      });
+      return json(await readAttempt(db(), judgeConfig(), u.id, a, l?.revision));
     }
     const rows = (
       await db()
@@ -480,78 +414,8 @@ export async function POST(req: Request) {
           "Pemeriksaan kode belum diaktifkan. Pengelola perlu menghubungkan layanan sandbox Judge0.",
         );
       const source = z.string().min(1).max(20000).parse(b.source);
-      const pending = await db()
-        .prepare(
-          "SELECT id FROM attempts WHERE user_id=? AND kind='code' AND state='pending' AND created_at>? LIMIT 1",
-        )
-        .bind(u.id, new Date(Date.now() - 300000).toISOString())
-        .first();
-      if (pending)
-        throw new AppError(409, "Tunggu pemeriksaan sebelumnya selesai.");
-      const recent = await db()
-        .prepare(
-          "SELECT count(*) AS n FROM attempts WHERE user_id=? AND kind='code' AND created_at>?",
-        )
-        .bind(u.id, new Date(Date.now() - 60000).toISOString())
-        .first<{ n: number }>();
-      if ((recent?.n || 0) >= 5)
-        throw new AppError(429, "Maksimal lima pengiriman kode per menit.");
-      const reserve = await db()
-        .prepare(
-          "UPDATE progress SET code_attempts=code_attempts+1 WHERE user_id=? AND course_id=? AND lesson_id=? AND revision=? AND (?=0 OR code_attempts<?)",
-        )
-        .bind(
-          u.id,
-          c.id,
-          l.id,
-          l.revision,
-          l.exercise.maxAttempts,
-          l.exercise.maxAttempts,
-        )
-        .run();
-      if (!reserve.meta.changes)
-        throw new AppError(
-          429,
-          "Batas percobaan kode tercapai. Hubungi mentor.",
-        );
-      try {
-        const tokens = await submitCode(
-          cfg,
-          l.exercise.language,
-          source,
-          l.exercise.tests,
-        );
-        const id = crypto.randomUUID();
-        await db()
-          .prepare(
-            "INSERT INTO attempts(id,user_id,course_id,lesson_id,revision,kind,state,data,created_at) VALUES(?,?,?,?,?,?,?,?,?)",
-          )
-          .bind(
-            id,
-            u.id,
-            c.id,
-            l.id,
-            l.revision,
-            "code",
-            "pending",
-            JSON.stringify({
-              tokens,
-              source,
-              hidden: l.exercise.tests.map((t) => t.hidden),
-            }),
-            new Date().toISOString(),
-          )
-          .run();
-        return json({ id, state: "pending" });
-      } catch (e) {
-        await db()
-          .prepare(
-            "UPDATE progress SET code_attempts=max(0,code_attempts-1) WHERE user_id=? AND course_id=? AND lesson_id=? AND revision=?",
-          )
-          .bind(u.id, c.id, l.id, l.revision)
-          .run();
-        throw e;
-      }
+      const id = z.string().uuid().parse(b.requestId);
+      return json(await startAttempt(db(), cfg, u.id, c.id, l, source, id));
     }
     throw new AppError(400, "Tindakan tidak dikenal.");
   } catch (e) {

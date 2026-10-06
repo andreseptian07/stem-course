@@ -1,0 +1,43 @@
+<!doctype html><html><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: https://cdn.jsdelivr.net/pyodide/v0.29.1/full/; worker-src blob:; connect-src https://cdn.jsdelivr.net/pyodide/v0.29.1/full/; style-src 'none'; base-uri 'none'; form-action 'none'"><title>Isolated practice</title></head><body><script>
+// This document is always embedded without allow-same-origin. It receives only public examples.
+let worker, timer;
+const script = `
+let sent=false;
+const send=self.postMessage.bind(self);
+self.onmessage=async ({data})=>{
+  let out='',err='';
+  const append=s=>{out+=(String(s)+'\\n');if(out.length>8000)throw Error('Output terlalu besar');};
+  try {
+    if(data.language==='python'){
+      importScripts('https://cdn.jsdelivr.net/pyodide/v0.29.1/full/pyodide.js');
+      const py=await loadPyodide({indexURL:'https://cdn.jsdelivr.net/pyodide/v0.29.1/full/'});
+      const lines=data.input.split('\\n'); let i=0;
+      py.setStdin({stdin:()=>i<lines.length?lines[i++]:null});
+      py.setStdout({batched:append}); py.setStderr({batched:s=>{err+=(s+'\\n');}});
+      await py.runPythonAsync(data.source);
+    }else{
+      let i=0;const lines=data.input.split('\\n');
+      // Python-style input/readline and console.log/print are supplied for introductory JS exercises.
+      const log=(...args)=>append(args.join(' '));
+      await new (Object.getPrototypeOf(async function(){}).constructor)('input','readline','print','console',data.source)(()=>lines[i++]??'',()=>lines[i++]??'',log,{log,error:log,warn:log});
+    }
+    send({stdout:out.slice(0,8000),stderr:err.slice(0,8000)});
+  }catch(e){send({stdout:out.slice(0,8000),stderr:String(e).slice(0,8000),error:true});}
+};`;
+window.addEventListener('message',e=>{
+  if(e.source!==parent||!e.data||e.data.type!=='run')return;
+  if(worker)worker.terminate();clearTimeout(timer);
+  const {nonce,language,source,input}=e.data;
+  if(!['python','javascript'].includes(language)||typeof source!=='string'||source.length>20000||typeof input!=='string'||input.length>5000)return;
+  try {
+    const blob=URL.createObjectURL(new Blob([script],{type:'application/javascript'}));
+    worker=new Worker(blob);URL.revokeObjectURL(blob);
+    const finish=result=>{clearTimeout(timer);worker.terminate();parent.postMessage({type:'result',nonce,...result},'*');};
+    worker.onmessage=e=>finish(e.data);
+    worker.onerror=()=>finish({error:true,stderr:'Runtime browser belum berhasil dimuat. Periksa koneksi dan coba lagi.'});
+    timer=setTimeout(()=>finish({error:true,stderr:'Batas waktu latihan browser terlampaui (30 detik).'}),30000);
+    worker.postMessage({language,source,input});
+  }catch(e){parent.postMessage({type:'result',nonce,error:true,stderr:'Browser ini belum mendukung runner terisolasi.'},'*');}
+});
+parent.postMessage({type:'practice-ready'},'*');
+</script></body></html>

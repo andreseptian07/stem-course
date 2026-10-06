@@ -72,12 +72,16 @@ test("course validation rejects invalid answers, media and duplicate lessons", (
 test("sandbox adapter bounds resources, disables network and preserves stdin", async () => {
   let payload;
   const fake = async (url, init) => {
-    assert.ok(url.startsWith("https://judge.test/submissions/batch"));
+    assert.ok(url.startsWith("https://judge.example.com/submissions/batch"));
     payload = JSON.parse(init.body);
     return Response.json([{ token: "token-test" }]);
   };
   const tokens = await submitCode(
-    { url: "https://judge.test", languageIds: { python: 71 } },
+    {
+      url: "https://judge.example.com",
+      token: "secret",
+      languageIds: { python: 71 },
+    },
     "python",
     "print(input())",
     [{ input: "hello", expected: "hello" }],
@@ -87,19 +91,19 @@ test("sandbox adapter bounds resources, disables network and preserves stdin", a
   assert.equal(payload.submissions[0].enable_network, false);
   assert.equal(payload.submissions[0].cpu_time_limit, 2);
   assert.equal(payload.submissions[0].memory_limit, 64000);
-  assert.equal(payload.submissions[0].stdin, "hello");
+  assert.equal(atob(payload.submissions[0].stdin), "hello");
 });
 test("sandbox rejects unsafe endpoint and incomplete service responses", async () => {
   await assert.rejects(() =>
     submitCode(
-      { url: "http://judge.test", languageIds: { python: 71 } },
+      { url: "http://judge.example.com", languageIds: { python: 71 } },
       "python",
       "x",
       [{ input: "", expected: "" }],
     ),
   );
   await assert.rejects(() =>
-    pollCode({ url: "https://judge.test" }, ["token-test"], async () =>
+    pollCode({ url: "https://judge.example.com" }, ["token-test"], async () =>
       Response.json({ submissions: [] }),
     ),
   );
