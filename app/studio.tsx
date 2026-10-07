@@ -23,6 +23,7 @@ import {
   RefreshCw,
   LogOut,
   ChevronDown,
+  LayoutDashboard,
 } from "lucide-react";
 import type {
   State,
@@ -203,6 +204,9 @@ export default function Studio() {
           </strong>
         </a>
         <nav aria-label="Navigasi ruang belajar">
+          <a className="studio-dashboard" href="/dashboard" onClick={(event) => {
+            if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
+          }}><LayoutDashboard size={17} /><span>Dashboard</span></a>
           {[
             ["learn", "Ruang belajar", BookOpen],
             ["sessions", "Sesi Tutor", CalendarDays],
@@ -235,14 +239,6 @@ export default function Studio() {
         <a className="icon-button studio-logout" href="/logout" onClick={(event) => {
           if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
         }}><LogOut size={16} /><span>Keluar</span></a>
-        <a
-          className="avatar"
-          title="Dashboard dan profil saya"
-          aria-label="Dashboard dan profil saya"
-          href="/dashboard"
-        >
-          ST
-        </a>
       </header>
       {!state ? (
         <main className="welcome">

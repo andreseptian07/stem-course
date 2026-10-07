@@ -24,3 +24,9 @@ Ini audit implementasi internal, belum merupakan penelitian usability dengan sis
 Tautan Keluar selalu tersedia di header dashboard, profil, kelas, pengelolaan akses, dan ruang belajar. Di beranda/katalog, tautan ditampilkan untuk pengguna yang masuk. Tautan membuka halaman konfirmasi Keluar; sesi diakhiri melalui POST agar kunjungan GET tidak mengeluarkan akun. Header mobile memakai dua baris untuk mempertahankan tombol yang terlihat tanpa membuka menu atau menggulir halaman.
 
 Perubahan lanjutan ini diverifikasi di lokal dan belum di-deploy, sesuai instruksi pengguna. Jalankan `npm run dev:hosting-db` lalu buka `http://127.0.0.1:5173`. Database menggunakan konfigurasi Hostinger di `.env.local`; pemeriksaan koneksi berhasil melalui TLS. Jangan gunakan database tersebut untuk seed/reset atau tes integrasi dengan data buatan.
+
+## Perbaikan lanjutan: kembali ke Dashboard
+
+Avatar ST yang mengarah ke dashboard sebelumnya disembunyikan pada mobile. Navigasi bersama ruang belajar, sesi Tutor dan editor course sekarang memiliki tautan **Dashboard** dengan ikon dan tulisan, tersedia juga saat data masih dimuat. Perubahan editor yang belum disimpan tetap memunculkan konfirmasi sebelum meninggalkan halaman. Navigasi mobile dibagi dua kolom agar semua tujuan terbaca pada layar kecil.
+
+Komponen ketiga tampilan diperiksa dengan data visual lokal pada 320, 768 dan 1280 piksel: tautan terlihat dan tidak terjadi overflow horizontal. Klik Dashboard dari editor berhasil membuka dashboard. Typecheck serta 77 tes lulus. Server aplikasi lokal dengan konfigurasi database hosting tetap aktif; pengujian halaman akun sebenarnya memerlukan login pengguna. Perubahan belum di-deploy.
