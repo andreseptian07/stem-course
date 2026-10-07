@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { mediaId } from "./media-model.ts";
 const id = z
   .string()
   .min(1)
@@ -14,6 +15,7 @@ export const courseSchema = z
     level: z.string().max(40),
     published: z.boolean(),
     sample: z.boolean(),
+    certificateEnabled: z.boolean().default(false),
     overview: z
       .object({
         outcomes: z.array(z.string().trim().min(1).max(500)).max(20),
@@ -42,6 +44,7 @@ export const courseSchema = z
                   "callout",
                   "video",
                   "image",
+                  "file",
                   "code",
                   "diagram",
                 ]),
@@ -124,7 +127,9 @@ export const courseSchema = z
             });
       }
       for (const b of l.blocks)
-        if (["video", "image"].includes(b.type) && b.content) {
+        if (["video", "image", "file"].includes(b.type) && b.content) {
+          if (["image", "file"].includes(b.type) && mediaId(b.content)) continue;
+          if (b.type === "file") { ctx.addIssue({code:"custom",message:"Gunakan berkas yang diunggah untuk blok dokumen."}); continue; }
           try {
             if (new URL(b.content).protocol !== "https:") throw 0;
           } catch {

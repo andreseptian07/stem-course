@@ -1,9 +1,12 @@
 "use client";
+import EmailManagement from "./email-management";
+import EmailStatus from "./email-status";
 import { useEffect, useRef, useState } from "react";
 import { ShieldCheck, Layers3, RefreshCw, LogOut } from "lucide-react";
 import "./account.css";
 import "./access.css";
 import TutorManagement from "./tutor-management";
+import NotificationLink from "./notification-link";
 const labels: Record<string, string> = {
   pending: "Menunggu persetujuan",
   active: "Aktif",
@@ -71,12 +74,14 @@ export default function Access() {
       <header className="account-header">
         <a className="account-brand" href="/">
           <Layers3 />
-          STEM Studio
+          Ruang STEM
         </a>
         <a href="/courses">Jelajahi course</a>
+        {data && <NotificationLink />}
         <a className="account-logout" href="/logout"><LogOut size={18} />Keluar</a>
       </header>
       <main className="access-main" id="access-main">
+        <EmailStatus />
         <div className="access-heading">
           <div>
             <div className="eyebrow teal">AKUN & PERIZINAN</div>
@@ -126,6 +131,7 @@ export default function Access() {
         )}
         {owner && (
           <>
+            <EmailManagement />
             <div className="access-actions">
               <a href="/dashboard">Dashboard</a>
               <a href="/classes">Kelas & Tutor</a>

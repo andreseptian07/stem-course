@@ -47,7 +47,7 @@ test("operator errors never include driver messages, SQL or password", () => {
 });
 test("MariaDB schema preserves all platform tables, wide content and millisecond leases", () => {
   const tables = Object.values(schema).map(getTableConfig);
-  assert.equal(tables.length, 25);
+  assert.equal(tables.length, 31);
   assert.equal(tables.find((t) => t.name === "courses").columns.find((c) => c.name === "data").getSQLType(), "longtext");
   assert.equal(tables.find((t) => t.name === "attempts").columns.find((c) => c.name === "poll_at").getSQLType(), "bigint");
   const sql = fs.readFileSync("mariadb/0000_big_captain_marvel.sql", "utf8");
@@ -58,4 +58,19 @@ test("MariaDB schema preserves all platform tables, wide content and millisecond
   const tutorSql = fs.readFileSync("mariadb/0002_flaky_lady_vermin.sql", "utf8");
   assert.equal((tutorSql.match(/ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin/g) || []).length, 3);
   assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM/i.test(tutorSql));
+  const notificationSql = fs.readFileSync("mariadb/0003_brown_reaper.sql", "utf8");
+  assert.ok(notificationSql.includes("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"));
+  assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM|ALTER TABLE/i.test(notificationSql));
+  const emailSql = fs.readFileSync("mariadb/0004_omniscient_tarot.sql", "utf8");
+  assert.equal((emailSql.match(/ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin/g)||[]).length,2);
+  assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM|ALTER TABLE/i.test(emailSql));
+  const uploadSql = fs.readFileSync("mariadb/0005_smiling_viper.sql", "utf8");
+  assert.ok(uploadSql.includes("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"));
+  assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM|ALTER TABLE/i.test(uploadSql));
+  const certificateSql = fs.readFileSync("mariadb/0007_luxuriant_terror.sql", "utf8");
+  assert.ok(certificateSql.includes("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"));
+  assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM|ALTER TABLE/i.test(certificateSql));
+  const mediaSql = fs.readFileSync("mariadb/0006_messy_omega_sentinel.sql", "utf8");
+  assert.ok(mediaSql.includes("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"));
+  assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM|ALTER TABLE/i.test(mediaSql));
 });

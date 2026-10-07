@@ -1,4 +1,8 @@
 "use client";
+import ManagementReports from "./management-reports";
+import { CertificateList } from "./certificates-panel";
+import { CourseUpload, CourseFileLibrary } from "./media-controls";
+import { mediaId, type MediaInfo } from "@/lib/media-model";
 import { useState, useEffect } from "react";
 import {
   Plus,
@@ -146,6 +150,7 @@ export default function Admin({
       });
   }
   function switchCourse(c: Course) {
+    if (busy) return;
     if (
       dirty &&
       !confirm("Perubahan belum disimpan. Pindah course dan abaikan perubahan?")
@@ -156,6 +161,17 @@ export default function Admin({
     setDirty(false);
     setError("");
     setMessage("");
+  }
+  function uploadedBlock(blockId: string, file: MediaInfo) {
+    if (!editing || !lesson) return;
+    const courseId = editing.id, lessonId = lesson.id;
+    setEditing((current) => !current || current.id !== courseId ? current : {
+      ...current, lessons: current.lessons.map((item) => item.id !== lessonId ? item : {
+        ...item, blocks: item.blocks.map((block) => block.id !== blockId ? block : {...block,content:file.url,caption:file.name}),
+      }),
+    });
+    setDirty(true);
+    setMessage("Berkas diunggah. Simpan course untuk memasangnya pada materi.");
   }
   async function save() {
     if (!editing) return;
@@ -222,6 +238,8 @@ export default function Admin({
           ["content", "Konten & kurikulum", Layers3],
           ["sessions", "Sesi Tutor", CalendarDays],
           ["progress", "Progres siswa", Users],
+          ["certificates", "Sertifikat", Check],
+          ["reports", "Laporan", Users],
           ["integration", "Pemeriksa kode", Code2],
         ].map(([key, label, Icon]: any) => (
           <button
@@ -256,6 +274,10 @@ export default function Admin({
             await reload();
           }}
         />
+      ) : tab === "reports" ? (
+        <ManagementReports courses={data.courses} />
+      ) : tab === "certificates" ? (
+        <CertificateList admin />
       ) : tab === "progress" ? (
         <section>
           <div className="section-heading">
@@ -508,6 +530,8 @@ export default function Admin({
                     Tandai sebagai course contoh
                   </label>
                 </div>
+                <label className="checkbox-label"><input type="checkbox" checked={!!editing.certificateEnabled} onChange={e=>edit({...editing,certificateEnabled:e.target.checked})}/>Aktifkan sertifikat penyelesaian</label>
+                <p className="small">Syarat: semua materi versi terbaru selesai, tes wajib lulus, serta seluruh tugas terbit/ditutup dalam satu kelas diterima Tutor (minimal satu tugas). Course contoh tidak menerbitkan sertifikat. Sertifikat lama tetap merekam versi penerbitannya.</p>
                 <CourseOverview course={editing} update={edit} />
               </details>
               <div className="authoring">
@@ -651,6 +675,7 @@ export default function Admin({
                                   callout: "Catatan",
                                   video: "Video",
                                   image: "Gambar",
+                                  file: "Dokumen",
                                   code: "Contoh kode",
                                   diagram: "Diagram alur",
                                 }[b.type]
@@ -693,7 +718,9 @@ export default function Admin({
                               </button>
                             </div>
                           </div>
-                          {["text", "callout", "code"].includes(b.type) ? (
+                          {(b.type === "file" || (b.type === "image" && mediaId(b.content))) ? (
+                            <p className="small">{b.content ? <a href={b.content + "?download=1"}>{b.caption || "Unduh berkas terpilih"}</a> : "Belum ada dokumen. Pilih berkas melalui upload atau daftar berkas course."}</p>
+                          ) : ["text", "callout", "code"].includes(b.type) ? (
                             <textarea
                               aria-label={`Isi blok ${i + 1}`}
                               rows={b.type === "code" ? 5 : 4}
@@ -733,7 +760,10 @@ export default function Admin({
                               }
                             />
                           )}{" "}
-                          {["video", "image"].includes(b.type) && (
+                          {["image", "file"].includes(b.type) && (
+                            <CourseUpload courseId={editing.version > 0 ? editing.id : null} type={b.type as "image" | "file"} disabled={busy} onBusy={setBusy} onUploaded={(file) => uploadedBlock(b.id, file)} />
+                          )}
+                          {["video", "image", "file"].includes(b.type) && (
                             <input
                               aria-label="Keterangan media"
                               placeholder="Keterangan / teks alternatif"
@@ -758,6 +788,7 @@ export default function Admin({
                           ["callout", "Catatan"],
                           ["video", "Video"],
                           ["image", "Gambar"],
+                          ["file", "Dokumen"],
                           ["code", "Kode"],
                           ["diagram", "Diagram"],
                         ].map(([type, label]) => (
@@ -785,6 +816,7 @@ export default function Admin({
                           </button>
                         ))}
                       </div>
+                      {editing.version > 0 && <CourseFileLibrary key={editing.id} courseId={editing.id} usedIds={editing.lessons.flatMap(item => item.blocks.map(block => mediaId(block.content)).filter((id): id is string => !!id))} disabled={busy} onChoose={(file) => patchLesson({blocks:[...lesson.blocks,{id:uid(),type:file.mime.startsWith("image/") ? "image" : "file",content:file.url,caption:file.name}]})} />}
                       <QuizEditor lesson={lesson} patch={patchLesson} />
                       <ExerciseEditor lesson={lesson} patch={patchLesson} />
                       <details className="course-settings">

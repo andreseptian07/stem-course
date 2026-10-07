@@ -1,6 +1,6 @@
 export type Block = {
   id: string;
-  type: "text" | "heading" | "callout" | "video" | "image" | "code" | "diagram";
+  type: "text" | "heading" | "callout" | "video" | "image" | "file" | "code" | "diagram";
   content: string;
   caption?: string;
 };
@@ -45,6 +45,7 @@ export type Course = {
   level: string;
   published: boolean;
   sample: boolean;
+  certificateEnabled?: boolean;
   overview?: {
     outcomes: string[];
     requirements: string[];

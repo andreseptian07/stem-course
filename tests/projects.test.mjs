@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
 import { sampleCourse } from "../lib/seed.ts";
-import { saveClass, setMembership } from "../lib/classes.ts";
+import { saveClass, setMembership, saveClassSession } from "../lib/classes.ts";
+import { tutorDashboard } from "../lib/tutor-dashboard.ts";
 import {
   saveAssignment,
   submitProject,
@@ -120,6 +121,83 @@ const review = (extra = {}) => ({
   feedback: "Tambahkan analisis hasil.",
   score: 60,
   ...extra,
+});
+test("teaching dashboard scopes assignments and never returns private submission contents", async () => {
+  const { d, sql, owner, mentor, other, alice } = await fixture();
+  try {
+    await saveAssignment(d, mentor, task());
+    await submitProject(d, alice, submit());
+    const dashboard = await tutorDashboard(d, mentor);
+    assert.equal(dashboard.classes.length, 1);
+    assert.equal(dashboard.classes[0].studentCount, 2);
+    assert.equal(dashboard.classes[0].pendingCount, 1);
+    assert.equal(dashboard.pendingCount, 1);
+    assert.equal(dashboard.reviews[0].studentName, "alice");
+    assert.equal(dashboard.reviews[0].late, true);
+    for (const key of ["body", "url", "feedback", "instructions", "score", "studentId"])
+      assert.equal(key in dashboard.reviews[0], false);
+    assert.equal(await tutorDashboard(d, alice), null);
+    assert.deepEqual(await tutorDashboard(d, { ...other, role: "tutor" }), {
+      classes: [], reviews: [], pendingCount: 0, sessions: [],
+    });
+    assert.equal((await tutorDashboard(d, owner)).pendingCount, 1);
+    sql.prepare("UPDATE cohorts SET mentor_id=? WHERE id=?").run(other.id, "class-a");
+    assert.equal((await tutorDashboard(d, { ...mentor, role: "tutor" })).pendingCount, 0);
+    assert.equal((await tutorDashboard(d, other)).pendingCount, 1);
+  } finally { sql.close(); }
+});
+test("teaching queue follows latest review, membership and archive state, including closed tasks", async () => {
+  const { d, sql, owner, mentor, alice } = await fixture();
+  try {
+    await saveAssignment(d, mentor, task());
+    await submitProject(d, alice, submit());
+    await reviewProject(d, mentor, review());
+    assert.equal((await tutorDashboard(d, mentor)).pendingCount, 0);
+    await submitProject(d, alice, submit("s-new", { previousId: "s-a", previousVersion: 2 }));
+    assert.deepEqual((await tutorDashboard(d, mentor)).reviews.map((r) => [r.id, r.attempt]), [["s-new", 2]]);
+    await saveAssignment(d, mentor, { ...task("closed"), version: 1 });
+    assert.equal((await tutorDashboard(d, mentor)).pendingCount, 1);
+    await setMembership(d, owner, "class-a", alice.id, "removed");
+    assert.equal((await tutorDashboard(d, mentor)).pendingCount, 0);
+    await setMembership(d, owner, "class-a", alice.id, "approved");
+    await reviewProject(d, mentor, review({ submissionId: "s-new", status: "accepted" }));
+    assert.equal((await tutorDashboard(d, mentor)).pendingCount, 0);
+    sql.prepare("UPDATE cohorts SET status='archived' WHERE id=?").run("class-a");
+    assert.deepEqual((await tutorDashboard(d, owner)).classes, []);
+  } finally { sql.close(); }
+});
+test("teaching agenda includes ongoing sessions, excludes ended and unassigned sessions", async () => {
+  const { d, sql, owner, mentor, other } = await fixture();
+  try {
+    const session = { id: "teaching-session", classId: "class-a", version: 0, title: "Sesi kelas", kind: "online", startsAt: "2099-01-01T00:00:00.000Z", duration: 60, location: "", url: "https://example.com/private-meeting" };
+    await saveClassSession(d, mentor, session);
+    const now = "2099-01-01T00:30:00.000Z";
+    const dashboard = await tutorDashboard(d, mentor, now);
+    assert.equal(dashboard.sessions.length, 1);
+    assert.equal(dashboard.sessions[0].classId, "class-a");
+    assert.equal("url" in dashboard.sessions[0], false);
+    assert.equal((await tutorDashboard(d, owner, now)).sessions.length, 1);
+    assert.equal((await tutorDashboard(d, { ...other, role: "tutor" }, now)).sessions.length, 0);
+    assert.equal((await tutorDashboard(d, mentor, "2099-01-01T01:00:00.000Z")).sessions.length, 0);
+    sql.prepare("UPDATE cohorts SET status='archived' WHERE id=?").run("class-a");
+    assert.equal((await tutorDashboard(d, owner, now)).sessions.length, 0);
+  } finally { sql.close(); }
+});
+test("teaching review payload is bounded while totals include the whole queue", async () => {
+  const { d, sql, mentor, alice } = await fixture();
+  try {
+    for (let i = 0; i < 51; i++) {
+      const suffix = String(i).padStart(2, "0");
+      await saveAssignment(d, mentor, { ...task(), id: `task-${suffix}` });
+      await submitProject(d, alice, submit(`submission-${suffix}`, { assignmentId: `task-${suffix}` }));
+    }
+    const dashboard = await tutorDashboard(d, mentor);
+    assert.equal(dashboard.pendingCount, 51);
+    assert.equal(dashboard.classes[0].pendingCount, 51);
+    assert.equal(dashboard.reviews.length, 50);
+    assert.equal(dashboard.reviews[0].id, "submission-00");
+    assert.equal(dashboard.reviews.at(-1).id, "submission-49");
+  } finally { sql.close(); }
 });
 test("project input rejects fabricated actor, unsafe URLs and invalid grades", () => {
   assert.equal(
@@ -403,4 +481,77 @@ test("dashboard orders revisions and deadlines, and does not call closed tasks a
   assert.equal(rows[0].overdue, false);
   assert.equal(rows[2].overdue, false);
   assert.equal(rows[3].needsWork, false);
+});
+
+test("private attachment lifecycle binds only owned files and preserves immutable attempt history", async () => {
+  const {uploadProjectFile,downloadProjectFile,removeProjectFile} = await import("../lib/project-files.ts");
+  const {mkdtemp,rm} = await import("node:fs/promises");
+  const {tmpdir} = await import("node:os");
+  const root=await mkdtemp(tmpdir()+"/stem-upload-");
+  const old=process.env.UPLOAD_STORAGE_DIR;process.env.UPLOAD_STORAGE_DIR=root;
+  const f=await fixture();
+  try {
+    await saveAssignment(f.d,f.owner,task());
+    const file=await uploadProjectFile(f.d,f.alice,"task-a","../laporan.txt",Buffer.from("Hasil praktikum"));
+    assert.equal(file.name,"laporan.txt");
+    assert.equal((await projectList(f.d,f.mentor,"class-a")).files.length,0);
+    assert.equal((await downloadProjectFile(f.d,f.alice,file.id)).bytes.toString(),"Hasil praktikum");
+    await assert.rejects(downloadProjectFile(f.d,f.bob,file.id),e=>e.status===404);
+    await assert.rejects(downloadProjectFile(f.d,f.mentor,file.id),e=>e.status===404);
+    await assert.rejects(submitProject(f.d,f.bob,submit("bob-file",{attachmentIds:[file.id]})),e=>e.status===409);
+    assert.equal(f.sql.prepare("SELECT submission_id FROM project_files WHERE id=?").get(file.id).submission_id,null);
+    await assert.rejects(submitProject(f.d,f.alice,submit("stale-file",{assignmentVersion:99,attachmentIds:[file.id]})),e=>e.status===409);
+    assert.equal(f.sql.prepare("SELECT submission_id FROM project_files WHERE id=?").get(file.id).submission_id,null);
+    await submitProject(f.d,f.alice,submit("s-a",{attachmentIds:[file.id]}));
+    assert.equal((await projectList(f.d,f.mentor,"class-a")).files.length,1);
+    assert.equal((await downloadProjectFile(f.d,f.mentor,file.id)).bytes.toString(),"Hasil praktikum");
+    await assert.rejects(removeProjectFile(f.d,f.alice,file.id),e=>e.status===404);
+    await assert.rejects(uploadProjectFile(f.d,f.alice,"task-a","revisi.txt",Buffer.from("revisi")),e=>e.status===403);
+    await reviewProject(f.d,f.mentor,review());
+    await assert.rejects(submitProject(f.d,f.alice,submit("reuse",{previousId:"s-a",previousVersion:2,attachmentIds:[file.id]})),e=>e.status===409);
+    const revision=await uploadProjectFile(f.d,f.alice,"task-a","revisi.txt",Buffer.from("Perbaikan"));
+    await submitProject(f.d,f.alice,submit("revised",{previousId:"s-a",previousVersion:2,attachmentIds:[revision.id]}));
+    assert.equal(f.sql.prepare("SELECT submission_id FROM project_files WHERE id=?").get(file.id).submission_id,"s-a");
+    assert.equal(f.sql.prepare("SELECT submission_id FROM project_files WHERE id=?").get(revision.id).submission_id,"revised");
+    await setMembership(f.d,f.owner,"class-a","alice","removed");
+    await assert.rejects(downloadProjectFile(f.d,f.alice,file.id),e=>e.status===404);
+    f.sql.prepare("UPDATE cohorts SET mentor_id='other' WHERE id='class-a'").run();
+    await assert.rejects(downloadProjectFile(f.d,f.mentor,file.id),e=>e.status===404);
+    assert.equal((await downloadProjectFile(f.d,f.owner,file.id)).size,Buffer.byteLength("Hasil praktikum"));
+    await assert.rejects(downloadProjectFile(f.d,f.owner,file.id,{UPLOAD_STORAGE_DIR:root,APP_URL:"https://example.com"}),e=>e.status===404);
+  } finally {f.sql.close();await rm(root,{recursive:true,force:true});if(old===undefined)delete process.env.UPLOAD_STORAGE_DIR;else process.env.UPLOAD_STORAGE_DIR=old;}
+});
+test("upload limit, failed partial claims and deletion keep draft capacity available", async () => {
+  const {uploadProjectFile,removeProjectFile} = await import("../lib/project-files.ts");
+  const {mkdtemp,rm}=await import("node:fs/promises");const {tmpdir}=await import("node:os");const root=await mkdtemp(tmpdir()+"/stem-upload-");const old=process.env.UPLOAD_STORAGE_DIR;process.env.UPLOAD_STORAGE_DIR=root;
+  const f=await fixture();
+  try {
+    await saveAssignment(f.d,f.owner,task());
+    const files=[];for(let i=0;i<3;i++) files.push(await uploadProjectFile(f.d,f.alice,"task-a",`file${i}.txt`,Buffer.from("test")));
+    await assert.rejects(uploadProjectFile(f.d,f.alice,"task-a","extra.txt",Buffer.from("test")),e=>e.status===409);
+    await assert.rejects(submitProject(f.d,f.alice,submit("partial",{attachmentIds:[files[0].id,"missing"]})),e=>e.status===409);
+    assert.equal(f.sql.prepare("SELECT count(*) AS n FROM project_files WHERE submission_id IS NOT NULL").get().n,0);
+    await assert.rejects(removeProjectFile(f.d,f.bob,files[0].id),e=>e.status===404);
+    await removeProjectFile(f.d,f.alice,files[0].id);
+    await uploadProjectFile(f.d,f.alice,"task-a","again.txt",Buffer.from("test"));
+    await assert.rejects(uploadProjectFile(f.d,f.other,"task-a","other.txt",Buffer.from("test")),e=>e.status===403);
+    await assert.rejects(uploadProjectFile(f.d,f.alice,"task-a","bad.html",Buffer.from("test")),e=>e.status===415);
+  } finally {f.sql.close();await rm(root,{recursive:true,force:true});if(old===undefined)delete process.env.UPLOAD_STORAGE_DIR;else process.env.UPLOAD_STORAGE_DIR=old;}
+});
+test("upload formats validate bytes independently of browser MIME and reject unsafe storage", async () => {
+  const {inspectFile,fileStorage,FILE_LIMIT}=await import("../lib/project-files.ts");
+  assert.equal(inspectFile("laporan.PDF",Buffer.from("%PDF-1.4\n%%EOF")).mime,"application/pdf");
+  assert.equal(inspectFile("foto.png",Buffer.from([137,80,78,71,13,10,26,10])).mime,"image/png");
+  assert.equal(inspectFile("foto.jpeg",Buffer.from([255,216,255,0])).mime,"image/jpeg");
+  for(const [name,bytes] of [["x.pdf",Buffer.from("fake")],["x.svg",Buffer.from("<svg/>")],["x.txt",Buffer.from([0,1])],["x.txt",Buffer.from([255])]]) assert.throws(()=>inspectFile(name,bytes),e=>e.status===415);
+  assert.throws(()=>inspectFile("x.txt",Buffer.alloc(FILE_LIMIT+1)),e=>e.status===413);
+  assert.throws(()=>fileStorage({NODE_ENV:"production"}),e=>e.status===503);
+  assert.throws(()=>fileStorage({UPLOAD_STORAGE_DIR:"public/files"}),e=>e.status===503);
+  assert.equal(projectMutation.safeParse(submit("duplicate",{attachmentIds:["file","file"]})).success,false);
+});
+test("multipart body reads enforce byte limits even with forged content length", async () => {
+  const {readRequestBytes}=await import("../lib/request-body.ts");
+  const req=new Request("http://localhost",{method:"POST",headers:{"Content-Length":"1"},body:Buffer.alloc(21)});
+  await assert.rejects(readRequestBytes(req,20),e=>e.status===413);
+  assert.equal((await readRequestBytes(new Request("http://localhost",{method:"POST",body:"test"}),20)).length,4);
 });

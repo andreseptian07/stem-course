@@ -1,7 +1,7 @@
 import Account from "../account";
 import { requirePlatformAccess } from "@/lib/browser-access";
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Dashboard peserta — STEM Studio" };
+export const metadata = { title: "Dashboard — Ruang STEM" };
 async function Protected({ join }: { join?: string }) {
   await requirePlatformAccess(
     join ? `/dashboard?join=${encodeURIComponent(join)}` : "/dashboard",

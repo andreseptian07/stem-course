@@ -1,4 +1,5 @@
 "use client";
+import { PrivatePhoto, PhotoControl } from "./media-controls";
 import { useEffect, useRef, useState } from "react";
 import {
   BookOpen,
@@ -20,11 +21,14 @@ import {
   Users,
   Menu,
   ChevronDown,
+  RefreshCw,
 
 } from "lucide-react";
 import type { AccountState, Profile, DashboardCourse } from "@/lib/account";
 import "./account.css";
 import ProjectSummary from "./project-summary";
+import TutorSummary from "./tutor-summary";
+import NotificationLink from "./notification-link";
 async function request(body?: unknown): Promise<any> {
   const r = await fetch(
     "/api/account",
@@ -64,7 +68,7 @@ const initials = (name: string) =>
     .slice(0, 2)
     .map((s) => s[0])
     .join("")
-    .toUpperCase() || "ST";
+    .toUpperCase() || "RS";
 const resumeLink = (c: DashboardCourse) =>
   `/learn?course=${encodeURIComponent(c.id)}${c.resumeLesson ? `&lesson=${encodeURIComponent(c.resumeLesson)}` : ""}`;
 export default function Account({
@@ -75,6 +79,8 @@ export default function Account({
   join?: string;
 }) {
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [dashboardMode, setDashboardMode] = useState(join ? "learning" : "teaching");
+  const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<AccountState | null>(null),
     [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
@@ -139,11 +145,19 @@ export default function Account({
     )
       return;
     setError("");
+    setRefreshing(true);
     try {
       if (!data && join) await request({ action: "enroll", courseId: join });
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Data belum dapat dimuat.");
+      if (e && typeof e === "object" && "status" in e && [401, 403].includes(Number(e.status))) {
+        setData(null);
+        setForm(null);
+        setDirty(false);
+      }
+    } finally {
+      setRefreshing(false);
     }
   }
   async function save(e: React.FormEvent) {
@@ -176,6 +190,7 @@ export default function Account({
       filter === "all" || (filter === "finished" ? c.finished : !c.finished),
   );
   const name = form?.displayName || data?.user.name || "Peserta";
+  const teaching = data?.teaching && dashboardMode === "teaching";
   return (
     <div className="account-app">
       <a className="account-skip" href="#account-main">
@@ -187,7 +202,7 @@ export default function Account({
             <Layers3 size={24} />
           </span>
           <b>
-            STEM<span>studio</span>
+            Ruang<span> STEM</span>
           </b>
         </a>
         <a href="/courses" onClick={guard}>
@@ -195,13 +210,10 @@ export default function Account({
           Jelajahi course
         </a>
         <a className="account-user" href="/profile" aria-label="Buka profil saya" onClick={guard}>
-          <span
-            className={`account-avatar ${data?.profile.avatarColor || "teal"}`}
-          >
-            {initials(data?.user.name || "ST")}
-          </span>
+          <PrivatePhoto key={data?.photo?.id || "initials"} className={`account-avatar ${data?.profile.avatarColor || "teal"}`} url={data?.photo?.url || null} fallback={initials(data?.user.name || "RS")} />
           <span>{data?.user.name || "Akun saya"}</span>
         </a>
+        {data && <NotificationLink onClick={guard} />}
         <a className="account-logout" href="/logout" onClick={guard}><LogOut size={18} />Keluar</a>
       </header>
       <div className="account-layout">
@@ -227,6 +239,7 @@ export default function Account({
               <UserRound size={19} />
               Profil saya
             </a>
+            <a href="/certificates" onClick={guard}><CheckCircle2 size={19} />Sertifikat saya</a>
             <a href="/classes" onClick={guard}>
               <Users size={19} />
               Kelas & Tutor
@@ -263,7 +276,7 @@ export default function Account({
             <div>
               <div className="eyebrow teal">
                 {view === "dashboard"
-                  ? "PERJALANAN BELAJAR ANDA"
+                  ? teaching ? "PENDAMPINGAN SISWA" : "PERJALANAN BELAJAR ANDA"
                   : "PROFIL AKUN"}
               </div>
               <h1>
@@ -273,10 +286,11 @@ export default function Account({
               </h1>
               <p>
                 {view === "dashboard"
-                  ? "Lanjutkan course Anda dan siapkan waktu untuk belajar bersama mentor."
+                  ? teaching ? "Pantau kelas, tindak lanjuti pekerjaan siswa, dan siapkan sesi mengajar." : "Lanjutkan course Anda dan siapkan waktu untuk belajar bersama mentor."
                   : "Lengkapi informasi dan tujuan belajar Anda."}
               </p>
             </div>
+            {view === "dashboard" && data && <button type="button" className="secondary" onClick={reload} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "spin" : undefined} />{refreshing ? "Memuat…" : "Muat ulang"}</button>}
             {view === "profile" && data && (
               <span className="pill">
                 {data.user.role === "owner" ? "Super Admin" : data.user.role === "tutor" ? "Tutor" : "Siswa"}
@@ -286,7 +300,7 @@ export default function Account({
           {error && (
             <div className="feedback warning" role="alert">
               {error}
-              <button className="secondary" onClick={reload}>
+              <button className="secondary" onClick={reload} disabled={refreshing}>
                 Muat ulang
               </button>
             </div>
@@ -306,6 +320,11 @@ export default function Account({
             )
           ) : view === "dashboard" ? (
             <>
+              {data.teaching && <div className="account-filter dashboard-modes" role="group" aria-label="Tampilan dashboard">
+                <button type="button" aria-pressed={dashboardMode === "teaching"} className={dashboardMode === "teaching" ? "selected" : ""} onClick={() => setDashboardMode("teaching")}>{data.user.role === "owner" ? "Pendampingan kelas" : "Dashboard Tutor"}</button>
+                <button type="button" aria-pressed={dashboardMode === "learning"} className={dashboardMode === "learning" ? "selected" : ""} onClick={() => setDashboardMode("learning")}>Belajar saya</button>
+              </div>}
+              {teaching ? <TutorSummary teaching={data.teaching!} owner={data.user.role === "owner"} /> : <>
               <section className="account-stats" aria-label="Ringkasan belajar">
                 <div>
                   <BookOpen />
@@ -500,24 +519,24 @@ export default function Account({
                   </div>
                 )}
               </section>
+              </>}
             </>
           ) : (
             form && (
               <form className="profile-form" onSubmit={save}>
                 <div className="profile-grid">
                   <aside className="profile-card">
-                    <span className={`profile-avatar ${form.avatarColor}`}>
-                      {initials(name)}
-                    </span>
+                    <PrivatePhoto key={data.photo?.id || "initials"} className={`profile-avatar ${form.avatarColor}`} url={data.photo?.url || null} fallback={initials(name)} />
+                    <PhotoControl photo={data.photo || null} disabled={busy} onBusy={setBusy} onError={setError} onNotice={setSaved} onChange={(photo) => setData((current) => current ? {...current,photo} : current)} />
                     <h2>{name}</h2>
                     <p>{form.institution || "Institusi belum ditambahkan"}</p>
                     <span className="pill">
                       {data.user.role === "owner"
                         ? "Pengelola platform"
-                        : "Peserta STEM Studio"}
+                        : "Peserta Ruang STEM"}
                     </span>
                     <div className="profile-colors">
-                      <span>Warna avatar</span>
+                      <span>{data.photo ? "Warna avatar inisial" : "Warna avatar"}</span>
                       <div role="group" aria-label="Warna avatar">
                         {[
                           ["teal", "Hijau"],

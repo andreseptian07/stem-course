@@ -2,6 +2,8 @@
 
 Target: `https://course.ypi-baitussalam.or.id`, pada paket Web/Cloud dengan Node.js yang sudah dimiliki. Website utama tetap menjadi aplikasi terpisah.
 
+Untuk menjadikan `https://ruangstem.com` alamat publik aplikasi yang sama, ikuti [panduan domain Ruang STEM](Domain-RuangSTEM.md). Domain pada catatan deployment di bawah adalah alamat pemasangan awal; perubahan `.env.example` tidak mengubah environment hosting secara otomatis.
+
 ## Status source
 
 Source sekarang menjalankan **Next.js pada Node.js**, memakai MariaDB dan login email/password sendiri. `npm run build` membuat build Next.js produksi; `npm start` menjalankan server Node. Pool MariaDB dipertahankan per proses. Header identitas Sites/ChatGPT tidak digunakan sebagai login.

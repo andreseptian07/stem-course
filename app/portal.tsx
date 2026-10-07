@@ -21,6 +21,7 @@ import {
   LogOut,
 } from "lucide-react";
 import type { CatalogCourse, CatalogState } from "@/lib/catalog";
+import NotificationLink from "./notification-link";
 import "./portal.css";
 const format = (c: CatalogCourse) =>
   c.overview.format === "blended" ? "Mandiri + sesi mentor" : "Belajar mandiri";
@@ -149,12 +150,12 @@ export default function Portal({
         Lewati ke konten
       </a>
       <header className="portal-header">
-        <a className="portal-brand" href="/" aria-label="STEM Studio beranda">
+        <a className="portal-brand" href="/" aria-label="Ruang STEM beranda">
           <span>
             <Layers3 size={24} />
           </span>
           <b>
-            STEM<span>studio</span>
+            Ruang<span> STEM</span>
           </b>
         </a>
         <nav aria-label="Navigasi utama">
@@ -167,6 +168,7 @@ export default function Portal({
           <a href="/learn?view=sessions">Sesi Tutor</a>
         </nav>
         <div className="portal-auth-actions">
+          {data?.user && <NotificationLink />}
           <a className="portal-login" href={data?.user ? "/dashboard" : "/login"}>
             {data?.user ? <BookOpen size={17} /> : <LogIn size={17} />}{" "}
             {data?.user ? "Dashboard" : "Masuk"}
@@ -442,7 +444,7 @@ export default function Portal({
                 <Layers3 size={22} />
               </span>
               <b>
-                STEM<span>studio</span>
+                Ruang<span> STEM</span>
               </b>
             </a>
             <p>Belajar konsep. Berlatih. Bangun pemahaman.</p>
@@ -454,7 +456,7 @@ export default function Portal({
               <a href="/learn?view=admin">Kelola course</a>
             )}
           </nav>
-          <span>© {new Date().getFullYear()} STEM Studio</span>
+          <span>© {new Date().getFullYear()} Ruang STEM</span>
         </div>
       </footer>
     </div>

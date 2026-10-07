@@ -1,5 +1,6 @@
 import { readRequestText } from "@/lib/request-body";
 import { checkAuthOrigin } from "@/lib/auth-policy";
+import { ClassError } from "@/lib/classes";
 import { z } from "zod";
 import {
   identity,
@@ -23,7 +24,7 @@ export const dynamic = "force-dynamic";
 function error(e: unknown) {
   if (e instanceof CodeError) return json({ error: e.message }, e.status);
   if (e instanceof JudgeError) return json({ error: e.message }, 503);
-  if (e instanceof AppError) return json({ error: e.message }, e.status);
+  if (e instanceof AppError || e instanceof ClassError) return json({ error: e.message }, e.status);
   if (e instanceof z.ZodError)
     return json({ error: e.issues[0]?.message || "Isian belum valid." }, 400);
   console.error(

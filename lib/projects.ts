@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fileStorage, projectFileList } from "./project-files.ts";
 import type { PlatformDatabase } from "./database.ts";
 import { courseTitleSql } from "./database-sql.ts";
 import { classAccess, ClassError, type ClassUser } from "./classes.ts";
@@ -52,6 +53,7 @@ export const projectMutation = z.discriminatedUnion("action", [
         .min(1, "Jelaskan hasil pekerjaan Anda.")
         .max(10000),
       url,
+      attachmentIds: z.array(id).max(3).refine((ids) => new Set(ids).size === ids.length, "Lampiran tidak boleh berulang.").default([]),
     })
     .strict(),
   z
@@ -93,7 +95,9 @@ export async function projectList(
       .bind(classId, staff ? 1 : 0, u.id)
       .all()
   ).results;
-  return { tasks, submissions, staff };
+  let uploadsAvailable = true;
+  try { fileStorage(); } catch(e) { if (!(e instanceof ClassError) || e.status !== 503) throw e; uploadsAvailable = false; }
+  return { tasks, submissions, staff, uploadsAvailable, files: uploadsAvailable ? await projectFileList(d, u, classId, staff) : [] };
 }
 export async function saveAssignment(
   d: PlatformDatabase,
@@ -158,12 +162,13 @@ export async function submitProject(d: PlatformDatabase, u: ClassUser, raw: unkn
   if (!a) throw new ClassError(404, "Tugas tidak ditemukan.");
   await classAccess(d, u, a.class_id, "member");
   // One statement rechecks membership, task version and the latest review before retaining a new immutable attempt.
-  const r = await d
+  const insert = d
     .prepare(
       `INSERT INTO project_submissions(id,assignment_id,student_id,attempt,assignment_version,instructions,body,url,submitted_at,late,status,feedback,version)
  SELECT ?,a.id,?,COALESCE((SELECT max(attempt) FROM project_submissions WHERE assignment_id=a.id AND student_id=?),0)+1,a.version,a.instructions,?,?,?,CASE WHEN a.due_at IS NOT NULL AND a.due_at<? THEN 1 ELSE 0 END,'submitted','',1
  FROM class_assignments a WHERE a.id=? AND a.version=? AND a.status='published' AND ${activeMember}
  AND (SELECT count(*) FROM project_submissions WHERE assignment_id=a.id AND student_id=?)<20
+ ${b.attachmentIds.length ? 'AND (SELECT count(*) FROM project_files WHERE submission_id=? AND owner_id=? AND assignment_id=a.id AND scope=? AND ready=1)=?' : ''}
  AND ((? IS NULL AND NOT EXISTS(SELECT 1 FROM project_submissions WHERE assignment_id=a.id AND student_id=?)) OR EXISTS(SELECT 1 FROM project_submissions p WHERE p.id=? AND p.assignment_id=a.id AND p.student_id=? AND p.version=? AND p.status='changes_requested' AND p.attempt=(SELECT max(attempt) FROM project_submissions WHERE assignment_id=a.id AND student_id=?)))`,
     )
     .bind(
@@ -178,18 +183,26 @@ export async function submitProject(d: PlatformDatabase, u: ClassUser, raw: unkn
       b.assignmentVersion,
       u.id,
       u.id,
+      ...(b.attachmentIds.length ? [b.id, u.id, fileStorage().scope, b.attachmentIds.length] : []),
       b.previousId,
       u.id,
       b.previousId,
       u.id,
       b.previousVersion,
       u.id,
-    )
-    .run();
+    );
+  let r;
+  if (b.attachmentIds.length) {
+    const claim = d.prepare(`UPDATE project_files SET submission_id=? WHERE id IN (${b.attachmentIds.map(() => "?").join(",")}) AND owner_id=? AND assignment_id=? AND scope=? AND ready=1 AND submission_id IS NULL AND NOT EXISTS(SELECT 1 FROM project_submissions WHERE id=?)`).bind(b.id,...b.attachmentIds,u.id,b.assignmentId,fileStorage().scope,b.id);
+    // Failed/stale submissions return reservations in the same transaction. Successful attempts retain immutable attachments.
+    const release = d.prepare("UPDATE project_files SET submission_id=NULL WHERE submission_id=? AND owner_id=? AND NOT EXISTS(SELECT 1 FROM project_submissions WHERE id=?)").bind(b.id,u.id,b.id);
+    const results = await d.batch([claim, insert, release]);
+    r = results[1];
+  } else r = await insert.run();
   if (!r.meta.changes)
     throw new ClassError(
       409,
-      "Kiriman belum dapat disimpan. Muat ulang: tugas mungkin berubah/ditutup, keanggotaan berakhir, atau kiriman sebelumnya masih ditinjau. Maksimal 20 versi.",
+      "Lampiran atau kiriman belum dapat disimpan. Muat ulang: tugas mungkin berubah/ditutup, keanggotaan berakhir, atau kiriman sebelumnya masih ditinjau. Maksimal 20 versi.",
     );
   return { id: b.id };
 }

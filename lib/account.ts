@@ -1,5 +1,7 @@
+import type { MediaInfo } from "./media-model.ts";
 import { z } from "zod";
 import type { DashboardProject } from "./projects";
+import type { TutorDashboard } from "./tutor-dashboard";
 import type { Course, Progress } from "./model";
 import { catalogCourse } from "./catalog.ts";
 import { blockingLesson, progressFor } from "./rules.ts";
@@ -89,7 +91,9 @@ export type AccountSession = {
 export type AccountState = {
   user: { id: string; name: string; role: string; email: string };
   profile: Profile;
+  photo: MediaInfo | null;
   courses: DashboardCourse[];
   sessions: AccountSession[];
   projects: DashboardProject[];
+  teaching: TutorDashboard | null;
 };

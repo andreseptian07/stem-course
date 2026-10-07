@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { sampleCourse } from "../lib/seed.ts";
 import { emptyProfile } from "../lib/account.ts";
+import { tutorDashboard } from "../lib/tutor-dashboard.ts";
 import { catalogCourse } from "../lib/catalog.ts";
 import { accountData, enrollCourse, saveProfile } from "../lib/account-data.ts";
 import { seedCourse, readCourse, courseRows, saveCourse, readProgress, initializeProgress, accessibleLesson, completeLesson, submitQuiz } from "../lib/course-data.ts";
@@ -173,6 +174,17 @@ export async function learningScenarios(t, d) {
     await saveAssignment(d, mentor, { ...assignment, version: 1, instructions: "Instruksi revisi" });
     assert.equal((await projectList(d, alice, "learning-class")).submissions[0].instructions, "Instruksi awal");
     await assert.rejects(() => saveAssignment(d, mentor, { ...assignment, version: 2, status: "draft" }), status(409));
+  });
+  await t.test("teaching summary shares SQLite and MariaDB behavior without exposing submission contents", async () => {
+    const teaching = await tutorDashboard(d, mentor, "2090-01-01T00:00:00.000Z");
+    assert.equal(teaching.classes.find((x) => x.id === "learning-class").courseTitle, c.title);
+    assert.equal(teaching.pendingCount, 1);
+    assert.equal(teaching.reviews[0].id, submission.id);
+    assert.equal(teaching.sessions.some((x) => x.id === "learning-class-live"), true);
+    for (const key of ["body", "feedback", "instructions", "url"]) assert.equal(key in teaching.reviews[0], false);
+    assert.equal((await accountData(d, mentor)).teaching.pendingCount, 1);
+    assert.equal(await tutorDashboard(d, alice), null);
+    assert.equal((await tutorDashboard(d, { ...other, role: "tutor" })).reviews.length, 0);
   });
   await t.test("review version conflicts and latest-only guards protect resubmissions", async () => {
     const review = { action: "review", submissionId: submission.id, version: 1, status: "changes_requested", feedback: "Perbaiki", score: 30 };

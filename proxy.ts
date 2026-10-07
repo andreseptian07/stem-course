@@ -23,8 +23,8 @@ export function proxy(req: NextRequest) {
     "camera=(), microphone=(), geolocation=()",
   );
   if (
-    path.startsWith("/api/") ||
-    ["/dashboard", "/profile", "/classes", "/access", "/learn", "/login", "/register", "/logout", "/password", "/tutor/activate"].includes(path)
+    path.startsWith("/api/") || path.startsWith("/certificates") ||
+    ["/dashboard", "/profile", "/notifications", "/classes", "/access", "/learn", "/login", "/register", "/logout", "/password", "/forgot-password", "/reset-password", "/verify-email", "/tutor/activate"].includes(path)
   )
     res.headers.set("Cache-Control", "private, no-store");
   return res;

@@ -1,12 +1,14 @@
+import { requireVerifiedEmail } from "@/lib/email-policy";
 import { readRequestText } from "@/lib/request-body";
 import { checkAuthOrigin } from "@/lib/auth-policy";
+import { ClassError } from "@/lib/classes";
 import { z } from "zod";
 import { getSignedUser } from "@/lib/auth";
 import { db, identity, json, AppError } from "@/lib/server";
 import { accountData, enrollCourse, saveProfile } from "@/lib/account-data";
 export const dynamic = "force-dynamic";
 function failure(e: unknown) {
-  if (e instanceof AppError) return json({ error: e.message }, e.status);
+  if (e instanceof AppError || e instanceof ClassError) return json({ error: e.message }, e.status);
   if (e instanceof z.ZodError)
     return json({ error: e.issues[0]?.message || "Isian belum valid." }, 400);
   console.error(
@@ -46,6 +48,7 @@ export async function POST(req: Request) {
       throw new AppError(400, "JSON tidak valid.");
     }
     const u = await identity(true);
+    await requireVerifiedEmail(db(), u.id);
     if (b.action === "enroll") {
       if (u.accessStatus === "suspended") throw new AppError(403, "Akun ditangguhkan. Hubungi Super Admin.");
       const id = z.string().min(1).max(80).parse(b.courseId);

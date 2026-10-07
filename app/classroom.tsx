@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { ClassForm } from "@/lib/classes";
 import Projects from "./projects";
+import NotificationLink from "./notification-link";
 import "./account.css";
 import "./classroom.css";
 const date = (s: string | null) =>
@@ -290,13 +291,14 @@ export default function Classes() {
             <Layers3 size={24} />
           </span>
           <b>
-            STEM<span>studio</span>
+            Ruang<span> STEM</span>
           </b>
         </a>
         <a href="/courses" onClick={guard}>
           Jelajahi course
         </a>
         <a className="account-user" href="/profile" aria-label="Buka profil saya" onClick={guard}><span className="account-avatar teal"><UserRound size={19} /></span><span>{data?.user.name || "Akun saya"}</span></a>
+        {data && <NotificationLink onClick={guard} />}
         <a className="account-logout" href="/logout" onClick={guard}><LogOut size={18} />Keluar</a>
       </header>
       <div className="account-layout">

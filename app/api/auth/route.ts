@@ -1,3 +1,7 @@
+import { after } from "next/server";
+import { prepareAccountEmail } from "@/lib/account-email";
+import { configuredAccountMailer } from "@/lib/email-settings";
+import { emailRequired } from "@/lib/email-policy";
 import { readRequestText } from "@/lib/request-body";
 import { cookies } from "next/headers";
 import { z } from "zod";
@@ -25,7 +29,16 @@ export async function POST(req: Request) {
     ]).parse(raw);
     const cookie = sessionCookie(), jar = await cookies();
     if (body.action === "register") {
-      return json(await registerAccount(db(), { email: body.email, password: body.password, displayName: body.displayName, ...(body.courseId ? { courseId: body.courseId } : {}) }, await registrationEnabled(db())), 201);
+      const deliver = await configuredAccountMailer(db(), process.env, !(await emailRequired(db())));
+      const registered = await registerAccount(db(), { email: body.email, password: body.password, displayName: body.displayName, ...(body.courseId ? { courseId: body.courseId } : {}) }, await registrationEnabled(db()));
+      let emailQueued = false;
+      if (deliver) {
+        try {
+          const mail = await prepareAccountEmail(db(), { email: body.email }, "verify", deliver);
+          after(mail.delivery); emailQueued = true;
+        } catch { console.warn("Registration verification email could not be scheduled."); }
+      }
+      return json({ ...registered, emailQueued }, 201);
     }
     if (body.action === "login") {
       const result = await loginAccount(db(), { email: body.email, password: body.password }, jar.get(cookie.name)?.value, courseFromReturnPath(body.returnTo));

@@ -11,7 +11,7 @@ Runtime Node memakai login email/password sendiri. Tidak memerlukan akun ChatGPT
 5. Owner menugaskan mentor dan menyetujui peserta per kelas. Persetujuan akun dan keanggotaan kelas tetap terpisah.
 6. Uji dua akun nyata di hosting untuk memastikan privasi tugas/feedback, progres wajib, review, dan penangguhan. Fixture CI tidak menggantikan pengujian DNS, TLS, cookie browser dan jaringan Hostinger.
 
-Alamat email belum diverifikasi melalui email otomatis. Pengelola perlu memverifikasi identitas peserta secara terpisah sebelum persetujuan; pendaftaran tidak membuktikan kepemilikan alamat email. Belum ada klaim email terverifikasi pada profil.
+Verifikasi alamat email tersedia melalui `/verify-email`; SMTP harus dikonfigurasi sebelum email sungguhan dapat dikirim. Verifikasi email tidak menyetujui akses siswa atau mengaktifkan peran Tutor. Kewajiban verifikasi dikendalikan panel Super Admin → Email akun setelah aktivasi SMTP; `AUTH_REQUIRE_EMAIL_VERIFICATION` merupakan nilai awal sebelum pengaturan panel tersimpan untuk origin itu; akun lama non-owner juga harus memverifikasi jika diaktifkan. Owner mempertahankan jalur operator agar pengelola tidak terkunci. Lihat `Email-Akun.md` untuk pengujian dan aktivasi.
 
 ## Peran dan pembatasan
 
@@ -36,7 +36,7 @@ Token sesi acak 256 bit hanya masuk cookie; MariaDB menyimpan hash SHA-256 token
 
 `/password` membutuhkan password saat ini. Perubahan menaikkan versi kredensial dan mencabut seluruh sesi. Verifikasi versi saat penerbitan sesi menolak login yang memakai password lama jika reset terjadi bersamaan. Logout mencabut sesi dari database, bukan hanya menghapus cookie. GET `/logout` hanya menampilkan konfirmasi; perubahan dilakukan melalui POST agar prefetch/link tidak mengakhiri sesi.
 
-Pemulihan awal dilakukan operator melalui `npm run auth:admin -- reset-password`, dengan prompt password tersembunyi dan pemeriksaan identitas pemohon di luar aplikasi. CLI memerlukan akses server/database operator; tidak ada endpoint reset publik yang menerima email untuk mengganti password tanpa bukti. Belum ada email verifikasi, email reset otomatis atau MFA.
+Pemulihan mandiri meminta email melalui `/forgot-password`; password baru hanya diterima bersama token sekali pakai yang berlaku 30 menit. Token terikat ke akun, email, tujuan dan versi password. GET/prefetch tidak menghabiskan tautan, token berada di fragment URL dan tidak dikirim ke server pada navigasi halaman. Pemulihan mencabut sesi lama dan token lama, kemudian pengguna masuk kembali. CLI `npm run auth:admin -- reset-password` tetap tersedia sebagai bantuan operator dengan pemeriksaan identitas di luar aplikasi. SMTP sungguhan belum diuji; MFA belum tersedia.
 
 ## Proteksi API
 

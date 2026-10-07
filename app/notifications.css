@@ -1,0 +1,30 @@
+.notification-link { display:inline-flex; align-items:center; gap:7px; min-height:44px; padding:8px 11px; border:1px solid var(--line); border-radius:8px; font-size:14px; font-weight:600; color:var(--teal); white-space:nowrap; }
+.notification-link:hover { background:#edf5f3; }
+.notification-badge { border-radius:20px; min-width:23px; padding:1px 6px; background:#087f78; color:white; font-size:12px; text-align:center; }
+.notification-header { display:flex; align-items:center; gap:24px; padding:20px 32px; background:white; border-bottom:1px solid var(--line); }
+.notification-header nav { margin-left:auto; display:flex; flex-wrap:wrap; align-items:center; gap:20px; font-size:14px; font-weight:600; }
+.notification-header nav a { display:inline-flex; align-items:center; gap:6px; min-height:44px; }
+.notification-main { max-width:1080px; padding:42px 32px 64px; margin:auto; }
+.notification-main h1 { display:flex; align-items:center; gap:10px; }
+.notification-toolbar { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:14px; }
+.notification-help { color:var(--muted); font-size:14px; margin:18px 0 24px; }
+.notification-list { display:grid; gap:14px; }
+.notification-card { background:white; border:1px solid var(--line); border-left:4px solid #d3dfdd; border-radius:10px; padding:22px 24px; overflow-wrap:anywhere; }
+.notification-card.unread { border-left-color:var(--teal); }
+.notification-card h2 { margin:15px 0 8px; font-size:20px; }
+.notification-card > p { color:var(--muted); margin-bottom:18px; }
+.notification-meta { display:flex; align-items:center; flex-wrap:wrap; gap:10px; font-size:13px; }
+.notification-meta time { margin-left:auto; color:var(--muted); }
+.notification-unread-label { color:var(--teal); font-weight:600; }
+.notification-actions { display:flex; flex-wrap:wrap; gap:12px; }
+.notification-actions .button-link { display:inline-flex; align-items:center; gap:7px; }
+@media(max-width:760px) {
+  .notification-header { padding:14px 16px; flex-wrap:wrap; gap:8px; }
+  .notification-header nav { width:100%; margin-left:0; gap:14px; }
+  .notification-main { padding:28px 16px 48px; }
+  .notification-card { padding:20px 16px; }
+  .notification-meta time { margin-left:0; width:100%; }
+  .account-header > .notification-link { grid-row:3; grid-column:1 / -1; justify-self:start; }
+  .portal-auth-actions { flex-wrap:wrap; }
+  .topbar > .notification-link { order:2; }
+}

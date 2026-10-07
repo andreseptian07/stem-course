@@ -1,6 +1,14 @@
 "use client";
 import { useState, useEffect, useRef } from "react";
 import { ClipboardList, Plus, ArrowLeft, RefreshCw } from "lucide-react";
+type ProjectFile = {
+  id: string;
+  assignmentId: string;
+  submissionId: string | null;
+  name: string;
+  size: number;
+  ready: number;
+};
 const labels: Record<string, string> = {
   draft: "Draft",
   published: "Pengumpulan dibuka",
@@ -81,6 +89,9 @@ export default function Projects({
       .filter((s: any) => s.studentId === userId)
       .sort((a: any, b: any) => b.attempt - a.attempt),
     latest = own[0];
+  const files: ProjectFile[] = data?.files || [];
+  const drafts = files.filter((f) => f.assignmentId === selected && !f.submissionId);
+  const incompleteUpload = drafts.some((f) => f.ready === 0);
   const canSubmit =
     isParticipant &&
     task?.status === "published" &&
@@ -163,6 +174,76 @@ export default function Projects({
       setBusy(false);
     }
   }
+  async function upload(file: File) {
+    if (busy || !task) return;
+    if (file.size > 5 * 1024 * 1024 || !file.size) {
+      setError("Berkas harus berisi data dan maksimal 5 MB.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(
+        "/api/project-files?assignment=" + encodeURIComponent(task.id),
+        { method: "POST", body: form },
+      );
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Upload belum berhasil.");
+      await load();
+      setNotice("Lampiran diunggah. Kirim pekerjaan agar Tutor dapat mengaksesnya.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function removeFile(id: string) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/project-files", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const result = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(result.error || "Lampiran belum dapat dihapus.");
+      await load();
+      setNotice("Lampiran belum dikirim telah dihapus.");
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+  const draftFiles = !!drafts.length && (
+    <ul className="project-files" aria-label="Lampiran belum dikirim">
+      {drafts.map((file) => (
+        <li key={file.id}>
+          <span>
+            {file.ready === 0 ? (
+              <>{file.name} · Upload belum selesai, hapus lalu coba kembali.</>
+            ) : (
+              <a href={"/api/project-files/" + encodeURIComponent(file.id)}>{file.name}</a>
+            )}
+          </span>
+          <span>{(file.size / 1024).toFixed(0)} KB</span>
+          <button
+            type="button"
+            className="class-outline"
+            disabled={busy}
+            onClick={() => void removeFile(file.id)}
+            aria-label={"Hapus lampiran " + file.name}
+          >Hapus</button>
+        </li>
+      ))}
+    </ul>
+  );
   const field = (key: string, value: any) => {
     dirty.current = true;
     setForm({ ...form, [key]: value });
@@ -209,7 +290,7 @@ export default function Projects({
         </div>
       </div>
       <p className="class-help">
-        Kumpulkan penjelasan hasil dan tautan proyek. Mentor meninjau pekerjaan
+        Kumpulkan penjelasan hasil, lampiran, dan tautan proyek. Mentor meninjau pekerjaan
         Anda; penilaian ini tidak mengubah kelulusan tes course.
       </p>
       {error && (
@@ -386,6 +467,7 @@ export default function Projects({
                     assignmentVersion: task.version,
                     previousId: latest?.id || null,
                     previousVersion: latest?.version || 0,
+                    attachmentIds: drafts.filter((f) => f.ready !== 0).map((f) => f.id),
                     body: answer,
                     url,
                   },
@@ -422,16 +504,25 @@ export default function Projects({
                   }}
                 />
               </label>
+              <label className="class-field">
+                <span>Lampiran pekerjaan (opsional)</span>
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.txt" disabled={busy || drafts.length >= 3 || data.uploadsAvailable === false}
+                  onChange={(e) => {const file=e.target.files?.[0];e.target.value="";if(file) void upload(file);}} />
+              </label>
+              {data.uploadsAvailable === false && <p className="class-help">Upload belum tersedia. Anda tetap dapat mengirim penjelasan dan tautan pekerjaan.</p>}
+              <p className="class-help">PDF, PNG, JPEG, atau TXT · maksimal 5 MB per berkas dan 3 lampiran per kiriman. Lampiran tersimpan sampai Anda mengirim atau menghapusnya.</p>
+              {draftFiles}
               <p className="class-help">
                 Pastikan mentor dapat membuka tautan Anda. Kiriman tersimpan
                 sebagai riwayat dan dapat direvisi setelah mentor meminta
                 perbaikan.
               </p>
-              <button className="class-primary" disabled={busy}>
+              <button className="class-primary" disabled={busy || incompleteUpload}>
                 Kirim pekerjaan
               </button>
             </form>
           )}
+          {!canSubmit && drafts.length > 0 && <div><h3>Lampiran belum dikirim</h3>{draftFiles}</div>}
           {!staff && latest && !canSubmit && (
             <p className="class-help">
               {latest.status === "submitted"
@@ -476,6 +567,11 @@ export default function Projects({
                     Buka proyek
                   </a>
                 )}
+                {files.some((f) => f.submissionId === s.id) && <ul className="project-files" aria-label="Lampiran kiriman">
+                  {files.filter((f) => f.submissionId === s.id).map((f) => <li key={f.id}>
+                    <a href={"/api/project-files/" + encodeURIComponent(f.id)}>Unduh {f.name}</a><span>{(f.size / 1024).toFixed(0)} KB</span>
+                  </li>)}
+                </ul>}
                 <details>
                   <summary>Instruksi saat dikirim</summary>
                   <p className="project-text">{s.instructions}</p>

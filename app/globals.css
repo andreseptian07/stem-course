@@ -1387,3 +1387,35 @@ textarea { resize:vertical; }
   .topbar nav button, .topbar nav > .studio-dashboard { min-width:0; min-height:44px; height:auto; padding:8px 6px; font-size:12px; line-height:1.3; white-space:normal; flex-direction:row; justify-content:center; gap:6px; }
   .topbar nav svg { flex-shrink:0; }
 }
+
+.course-upload{display:grid;gap:8px;padding:12px;border:1px dashed #bad1cd;border-radius:12px;margin:12px 0}.course-upload input{max-width:100%;min-width:0}.course-file-library{margin:20px 0;padding:14px;border:1px solid #dce3eb;border-radius:12px}.course-file-library summary{cursor:pointer;margin-bottom:12px}.course-file-library ul{list-style:none;padding:0;display:grid;gap:10px}.course-file-library li{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.course-file-library li span{overflow-wrap:anywhere;min-width:0;flex:1}
+
+.certificate-page { max-width: 960px; margin: 0 auto; padding: 32px 20px 70px; }
+.certificate-card { padding: 24px; margin: 20px 0; border: 1px solid var(--line, #dce5e3); border-radius: 16px; background: var(--surface, #fff); }
+.certificate-card h1, .certificate-card h2, .certificate-card h3 { margin: 0 0 16px; }
+.certificate-card p { line-height: 1.6; overflow-wrap: anywhere; }
+.certificate-number { overflow-wrap: anywhere; font-family: monospace; }
+.certificate-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0; }
+.certificate-course { border-top: 1px solid var(--line, #dce5e3); margin-top: 18px; padding-top: 14px; }
+.certificate-course summary { cursor: pointer; font-weight: 700; margin-bottom: 14px; }
+.certificate-course .field { margin: 14px 0; }
+.certificate-course button { margin: 10px 8px 0 0; }
+.certificate-checklist { list-style: none; padding: 0; margin: 14px 0; }
+.certificate-checklist li { line-height: 1.5; margin: 8px 0; overflow-wrap: anywhere; }
+.certificate-consent { align-items: flex-start; line-height: 1.5; margin: 16px 0; }
+.certificate-consent input { flex: 0 0 auto; margin-top: 4px; }
+@media (max-width: 600px) { .certificate-page { padding: 20px 14px 50px; } .certificate-card { padding: 18px; } }
+
+.report-filters { display: flex; align-items: end; flex-wrap: wrap; gap: 16px; margin: 20px 0; }
+.report-filters .field { flex: 1 1 220px; }
+.report-filters .checkbox-label { padding: 12px 0; }
+.report-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin: 24px 0; }
+.report-summary article { border: 1px solid var(--line,#dce5e3); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 8px; }
+.report-summary strong { font-size: 28px; }
+.report-summary span { font-size: 13px; }
+.report-exports { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin: 20px 0 12px; }
+.management-reports h3 { margin-top: 30px; }
+.report-search { max-width: 450px; margin: 16px 0; }
+.management-reports .table-wrap { overflow-x: auto; }
+.management-reports table { min-width: 760px; }
+@media (max-width:600px) { .report-summary { grid-template-columns: repeat(2,minmax(0,1fr)); } .report-summary article { padding: 14px; } }

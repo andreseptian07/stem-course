@@ -1,3 +1,4 @@
+import { photoInfo } from "./media-data.ts";
 import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { publishedSql } from "./database-sql.ts";
 import { AccessError as AppError } from "./access.ts";
@@ -6,6 +7,7 @@ import { readCourse, readProgress } from "./course-data.ts";
 import { enrolledSessions } from "./session-data.ts";
 import { classAgenda, type ClassUser } from "./classes.ts";
 import { dashboardProjects } from "./projects.ts";
+import { tutorDashboard } from "./tutor-dashboard.ts";
 import type { Course } from "./model";
 
 export async function accountData(d: PlatformDatabase, u: ClassUser) {
@@ -20,10 +22,12 @@ export async function accountData(d: PlatformDatabase, u: ClassUser) {
   const sessions = [...await enrolledSessions(d, u), ...await classAgenda(d, u)]
     .sort((a, b) => String(a.startsAt).localeCompare(String(b.startsAt)));
   return {
+    photo: await photoInfo(d, u.id),
     profile: p ? { ...JSON.parse(p.data), version: p.version } : emptyProfile(u.name),
     courses,
     sessions,
     projects: await dashboardProjects(d, u),
+    teaching: await tutorDashboard(d, u),
   };
 }
 export async function enrollCourse(d: PlatformDatabase, u: ClassUser, id: string) {

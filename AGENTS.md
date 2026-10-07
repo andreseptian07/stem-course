@@ -4,6 +4,7 @@
 - Local manual verification uses the existing Hostinger MariaDB connection from ignored `.env.local`. Keep credentials out of source, logs, and Git.
 - Run `npm run dev:hosting-db` for a loopback-only development server. Its HTTP authentication settings apply only to that local process; production keeps HTTPS.
 - This database contains live data. Do not run seeds, destructive integration tests, resets, or migrations against it as part of routine verification. Use temporary databases for automated integration tests.
+- On 7 October 2026, the user authorized required database changes on Hostinger while the site is still being prepared. Additive feature migrations may be applied after local verification. Preserve existing data and migration history; application deployment still requires a later explicit request.
 
 <!-- BEGIN:nextjs-agent-rules -->
 

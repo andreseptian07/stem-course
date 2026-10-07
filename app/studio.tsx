@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useCallback, useRef } from "react";
+import NotificationLink from "./notification-link";
 import {
   BookOpen,
   Code2,
@@ -35,6 +36,7 @@ import type {
   Block,
 } from "@/lib/model";
 import Admin from "./admin";
+import { CourseCertificate } from "./certificates-panel";
 import BrowserPractice from "./browser-practice";
 export async function api(path = "/api/studio", body?: unknown) {
   const r = await fetch(
@@ -215,7 +217,7 @@ export default function Studio() {
             <Layers3 size={23} />
           </span>
           <strong>
-            STEM<span>studio</span>
+            Ruang<span> STEM</span>
           </strong>
         </a>
         <nav aria-label="Navigasi ruang belajar">
@@ -241,6 +243,9 @@ export default function Studio() {
             </button>
           ))}
         </nav>
+        {state && <NotificationLink onClick={(event) => {
+          if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
+        }} />}
         <a className="icon-button studio-logout" href="/logout" onClick={(event) => {
           if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
         }}><LogOut size={16} /><span>Keluar</span></a>
@@ -350,6 +355,7 @@ export default function Studio() {
             <div className="progress">
               <span style={{ width: percent + "%" }} />
             </div>
+            <CourseCertificate key={`${course.id}-${course.version}-${done}`} courseId={course.id} />
             <div className="outline-label">
               KURIKULUM <span>{course.level}</span>
             </div>
@@ -578,6 +584,8 @@ function RenderBlock({ block: b }: { block: Block }) {
         <code>{b.content}</code>
       </pre>
     );
+  if (b.type === "file")
+    return b.content ? <p><a className="secondary" href={b.content + "?download=1"}>Unduh {b.caption || "dokumen materi"}</a></p> : null;
   if (b.type === "image")
     return b.content ? (
       <figure>

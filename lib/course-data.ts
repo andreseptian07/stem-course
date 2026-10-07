@@ -1,3 +1,5 @@
+import { validateCourseMedia } from "./media-data.ts";
+import { fileStorage } from "./project-files.ts";
 import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { publishedSql } from "./database-sql.ts";
 import { AccessError as AppError } from "./access.ts";
@@ -47,6 +49,7 @@ export async function initializeProgress(d: PlatformDatabase, userId: string, co
 export async function saveCourse(d: PlatformDatabase, user: { role: string }, raw: unknown) {
   if (user.role !== "owner") throw new AppError(403, "Halaman ini hanya untuk pengelola course.");
   const next = courseSchema.parse(raw);
+  const mediaIds = await validateCourseMedia(d, next);
   const old = await d.prepare("SELECT data,version FROM courses WHERE id=?")
     .bind(next.id).first<{ data: string; version: number }>();
   if (old) {
@@ -57,10 +60,17 @@ export async function saveCourse(d: PlatformDatabase, user: { role: string }, ra
       return { ...l, revision: prior ? JSON.stringify({ ...l, revision: 0 }) === JSON.stringify({ ...prior, revision: 0 }) ? prior.revision : prior.revision + 1 : 1 };
     });
     next.version = old.version + 1;
-    const updated = await d.prepare("UPDATE courses SET data=?,version=? WHERE id=? AND version=?")
-      .bind(JSON.stringify(next), next.version, next.id, old.version).run();
+    const data = JSON.stringify(next);
+    const scope = mediaIds.length ? fileStorage().scope : "";
+    const predicate = mediaIds.length ? ` AND (SELECT count(*) FROM media_files WHERE id IN (${mediaIds.map(() => "?").join(",")}) AND purpose='course' AND course_id=? AND scope=? AND ready=1)=?` : "";
+    const update = d.prepare("UPDATE courses SET data=?,version=? WHERE id=? AND version=?" + predicate)
+      .bind(data, next.version, next.id, old.version, ...(mediaIds.length ? [...mediaIds, next.id, scope, mediaIds.length] : []));
+    const statements = [update];
+    if (mediaIds.length) statements.push(d.prepare(`UPDATE media_files SET bound=1 WHERE id IN (${mediaIds.map(() => "?").join(",")}) AND course_id=? AND scope=? AND ready=1 AND EXISTS(SELECT 1 FROM courses WHERE id=? AND version=? AND data=?)`).bind(...mediaIds, next.id, scope, next.id, next.version, data));
+    const [updated] = await d.batch(statements);
     if (!updated.meta.changes) throw new AppError(409, "Course berubah saat disimpan. Muat ulang dan coba lagi.");
   } else {
+    if (mediaIds.length) throw new AppError(409, "Simpan course terlebih dahulu sebelum memakai upload.");
     if (next.version !== 0) throw new AppError(409, "Course tidak ditemukan. Muat ulang sebelum menyimpan.");
     next.version = 1;
     next.lessons = next.lessons.map((l) => ({ ...l, revision: 1 }));

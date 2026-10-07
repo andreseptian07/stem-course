@@ -1,7 +1,7 @@
 import Studio from "../studio";
 import { requirePlatformAccess } from "@/lib/browser-access";
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Ruang belajar — STEM Studio" };
+export const metadata = { title: "Ruang belajar — Ruang STEM" };
 async function Protected({ returnTo }: { returnTo: string }) {
   await requirePlatformAccess(returnTo);
   return <Studio />;

@@ -43,7 +43,7 @@ export default function TutorActivation({ signedEmail }: { signedEmail: string |
     finally { setBusy(false); }
   }
   return <main className="auth-container">
-    <a className="auth-brand" href="/"><BookOpen /><span>STEM Studio</span></a>
+    <a className="auth-brand" href="/"><BookOpen /><span>Ruang STEM</span></a>
     <section className="auth-card">
       <span className="auth-eyebrow">UNDANGAN TUTOR</span>
       <h1>Aktifkan akun Tutor</h1>

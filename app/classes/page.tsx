@@ -1,7 +1,7 @@
 import Classes from "../classroom";
 import { requirePlatformAccess } from "@/lib/browser-access";
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Kelas & mentor — STEM Studio" };
+export const metadata = { title: "Kelas & mentor — Ruang STEM" };
 async function Protected({
   classId,
   taskId,

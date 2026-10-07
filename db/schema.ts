@@ -4,7 +4,28 @@ import {
   integer,
   primaryKey,
   index,
+  uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+export const certificates = sqliteTable("certificates", {
+  number: text("number").primaryKey(),
+  userId: text("user_id").notNull(),
+  courseId: text("course_id").notNull(),
+  classId: text("class_id").notNull(),
+  courseVersion: integer("course_version").notNull(),
+  recipientName: text("recipient_name").notNull(),
+  courseTitle: text("course_title").notNull(),
+  className: text("class_name").notNull(),
+  evidence: text("evidence").notNull(),
+  issuedAt: text("issued_at").notNull(),
+  revokedAt: text("revoked_at"),
+  revokedBy: text("revoked_by"),
+  revokeReason: text("revoke_reason"),
+}, t => [uniqueIndex("certificates_learner_class").on(t.userId,t.courseId,t.classId), index("certificates_course_time").on(t.courseId,t.issuedAt)]);
+export const notificationReads = sqliteTable("notification_reads", {
+  userId: text("user_id").notNull(),
+  eventId: text("event_id").notNull(),
+  readAt: text("read_at").notNull(),
+}, (t) => [primaryKey({ columns: [t.userId, t.eventId] })]);
 export const tutorAccounts = sqliteTable("tutor_accounts", {
   userId: text("user_id").primaryKey(), active: integer("active").notNull().default(1),
   grantedBy: text("granted_by").notNull(), grantedAt: text("granted_at").notNull(), revokedAt: text("revoked_at"),
@@ -257,3 +278,30 @@ export const accessEvents = sqliteTable(
   },
   (t) => [index("access_events_time").on(t.createdAt)],
 );
+
+export const projectFiles = sqliteTable("project_files", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  assignmentId: text("assignment_id").notNull(),
+  submissionId: text("submission_id"),
+  scope: text("scope").notNull(),
+  name: text("name").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  ready: integer("ready").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+}, (t) => [index("project_files_owner").on(t.ownerId, t.assignmentId), index("project_files_submission").on(t.submissionId)]);
+
+export const mediaFiles = sqliteTable("media_files", {
+  id: text("id").primaryKey(),
+  ownerId: text("owner_id").notNull(),
+  courseId: text("course_id"),
+  purpose: text("purpose").notNull(),
+  scope: text("scope").notNull(),
+  name: text("name").notNull(),
+  mime: text("mime").notNull(),
+  size: integer("size").notNull(),
+  ready: integer("ready").notNull().default(0),
+  bound: integer("bound").notNull().default(0),
+  createdAt: text("created_at").notNull(),
+}, (t) => [index("media_owner_scope").on(t.ownerId,t.scope), index("media_course").on(t.courseId)]);

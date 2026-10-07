@@ -1,5 +1,25 @@
 // Node/MariaDB schema. The existing D1 schema remains in schema.ts.
 import { mysqlTable, varchar, longtext, int, bigint, primaryKey, index, uniqueIndex } from "drizzle-orm/mysql-core";
+export const certificates = mysqlTable("certificates", {
+  number: varchar("number", {length:48}).primaryKey(),
+  userId: varchar("user_id", {length:191}).notNull(),
+  courseId: varchar("course_id", {length:191}).notNull(),
+  classId: varchar("class_id", {length:191}).notNull(),
+  courseVersion: int("course_version").notNull(),
+  recipientName: longtext("recipient_name").notNull(),
+  courseTitle: longtext("course_title").notNull(),
+  className: longtext("class_name").notNull(),
+  evidence: longtext("evidence").notNull(),
+  issuedAt: varchar("issued_at", {length:32}).notNull(),
+  revokedAt: varchar("revoked_at", {length:32}),
+  revokedBy: varchar("revoked_by", {length:191}),
+  revokeReason: longtext("revoke_reason"),
+}, t => [uniqueIndex("certificates_learner_class").on(t.userId,t.courseId,t.classId), index("certificates_course_time").on(t.courseId,t.issuedAt)]);
+export const notificationReads = mysqlTable("notification_reads", {
+  userId: varchar("user_id", { length: 191 }).notNull(),
+  eventId: varchar("event_id", { length: 64 }).notNull(),
+  readAt: varchar("read_at", { length: 32 }).notNull(),
+}, (t) => [primaryKey({ columns: [t.userId, t.eventId] })]);
 export const settings = mysqlTable("settings", {
   key: varchar("key", { length: 191 }).primaryKey(),
   value: longtext("value").notNull(),
@@ -291,3 +311,47 @@ export const tutorEvents = mysqlTable("tutor_events", {
   reason: longtext("reason").notNull(),
   createdAt: varchar("created_at", { length: 32 }).notNull(),
 }, (t) => [index("tutor_events_time_idx").on(t.createdAt)]);
+
+export const authEmailStatus = mysqlTable("auth_email_status", {
+  userId: varchar("user_id", { length: 191 }).primaryKey(),
+  email: varchar("email", { length: 254 }).notNull(),
+  verifiedAt: varchar("verified_at", { length: 32 }).notNull(),
+});
+export const authEmailTokens = mysqlTable("auth_email_tokens", {
+  tokenHash: varchar("token_hash", { length: 64 }).primaryKey(),
+  userId: varchar("user_id", { length: 191 }).notNull(),
+  email: varchar("email", { length: 254 }).notNull(),
+  purpose: varchar("purpose", { length: 16 }).notNull(),
+  passwordVersion: int("password_version").notNull(),
+  createdAt: bigint("created_at", { mode: "number" }).notNull(),
+  expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
+  usedAt: bigint("used_at", { mode: "number" }),
+  claimId: varchar("claim_id", { length: 36 }),
+}, (t) => [index("auth_email_tokens_user_idx").on(t.userId), index("auth_email_tokens_expiry_idx").on(t.expiresAt)]);
+
+export const projectFiles = mysqlTable("project_files", {
+  id: varchar("id", {length: 36}).primaryKey(),
+  ownerId: varchar("owner_id", {length: 191}).notNull(),
+  assignmentId: varchar("assignment_id", {length: 191}).notNull(),
+  submissionId: varchar("submission_id", {length: 191}),
+  scope: varchar("scope", {length: 64}).notNull(),
+  name: varchar("name", {length: 180}).notNull(),
+  mime: varchar("mime", {length: 80}).notNull(),
+  size: int("size").notNull(),
+  ready: int("ready").notNull().default(0),
+  createdAt: varchar("created_at", {length: 32}).notNull(),
+}, (t) => [index("project_files_owner").on(t.ownerId, t.assignmentId), index("project_files_submission").on(t.submissionId)]);
+
+export const mediaFiles = mysqlTable("media_files", {
+  id: varchar("id", {length:36}).primaryKey(),
+  ownerId: varchar("owner_id", {length:191}).notNull(),
+  courseId: varchar("course_id", {length:191}),
+  purpose: varchar("purpose", {length:16}).notNull(),
+  scope: varchar("scope", {length:64}).notNull(),
+  name: varchar("name", {length:180}).notNull(),
+  mime: varchar("mime", {length:80}).notNull(),
+  size: int("size").notNull(),
+  ready: int("ready").notNull().default(0),
+  bound: int("bound").notNull().default(0),
+  createdAt: varchar("created_at", {length:32}).notNull(),
+}, (t) => [index("media_owner_scope").on(t.ownerId,t.scope), index("media_course").on(t.courseId)]);

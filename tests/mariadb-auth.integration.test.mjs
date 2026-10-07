@@ -1,3 +1,4 @@
+import { accountEmailScenarios } from "./account-email-scenarios.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMariaDb } from "../db/mariadb.ts";
@@ -101,5 +102,6 @@ test("standalone authentication uses a separate disposable MariaDB database", { 
       await assert.rejects(() => loginAccount(racing, ownerLogin), (e) => e.status === 401);
       await resetPassword(d, ownerInput.email, ownerPassword);
     });
+    await accountEmailScenarios(t, d);
   } finally { await pool.end(); }
 });

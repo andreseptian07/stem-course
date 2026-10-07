@@ -1,4 +1,5 @@
 import { runtimeDatabase } from "../db/runtime.ts";
+import { requireVerifiedEmail } from "./email-policy";
 import { getSignedUser } from "./auth.ts";
 import { sampleCourse } from "./seed";
 import { seedCourse, readCourse, readProgress, accessibleLesson, initializeProgress } from "./course-data.ts";
@@ -44,7 +45,7 @@ export async function identity(allowRestricted = false) {
     signed,
     false,
   );
-  if (!allowRestricted) requireActive(u);
+  if (!allowRestricted) { await requireVerifiedEmail(d, signed.userId); requireActive(u); }
   if (u.role === "owner") await seedCourse(d, sampleCourse);
   return u;
 }

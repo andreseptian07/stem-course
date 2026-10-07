@@ -1,9 +1,10 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { PlatformDatabase } from "./database.ts";
+import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { AuthError, sessionDuration, idleDuration } from "./auth-policy.ts";
 import { hashPassword, verifyPassword, validatePassword } from "./auth-password.ts";
 import { registerIdentity } from "./access.ts";
+import { requireVerifiedEmail } from "./email-policy.ts";
 import { publishedSql } from "./database-sql.ts";
 
 export type SignedUser = { userId: string; displayName: string; email: string };
@@ -25,14 +26,16 @@ async function ownerExists(d: PlatformDatabase) {
 }
 async function consumeLimit(d: PlatformDatabase, key: string, limit: number, window: number, at: number) {
   const bucket = digest(key);
-  await d.prepare("INSERT INTO auth_limits(bucket_id,hits,expires_at) VALUES(?,1,?) ON DUPLICATE KEY UPDATE hits=IF(expires_at<=?,1,LEAST(hits+1,?)),expires_at=IF(expires_at<=?,VALUES(expires_at),expires_at)")
+  await d.prepare(databaseSql(d,
+    "INSERT INTO auth_limits(bucket_id,hits,expires_at) VALUES(?,1,?) ON CONFLICT(bucket_id) DO UPDATE SET hits=CASE WHEN expires_at<=? THEN 1 ELSE min(hits+1,?) END,expires_at=CASE WHEN expires_at<=? THEN excluded.expires_at ELSE expires_at END",
+    "INSERT INTO auth_limits(bucket_id,hits,expires_at) VALUES(?,1,?) ON DUPLICATE KEY UPDATE hits=IF(expires_at<=?,1,LEAST(hits+1,?)),expires_at=IF(expires_at<=?,VALUES(expires_at),expires_at)"))
     .bind(bucket, at + window, at, limit + 1, at).run();
   const row = await d.prepare("SELECT hits FROM auth_limits WHERE bucket_id=?").bind(bucket).first<{ hits: number }>();
   if (!row || row.hits > limit) throw new AuthError(429, "Terlalu banyak percobaan. Coba lagi setelah jeda.");
 }
-export async function authRateLimit(d: PlatformDatabase, action: "login" | "register" | "password" | "invite" | "activate", email: string, at = Date.now()) {
+export async function authRateLimit(d: PlatformDatabase, action: "login" | "register" | "password" | "invite" | "activate" | "recovery" | "verification" | "emailConfirm" | "upload", email: string, at = Date.now()) {
   await d.prepare("DELETE FROM auth_limits WHERE expires_at<=?").bind(at).run();
-  const registration = action === "register" || action === "invite";
+  const registration = action === "register" || action === "invite" || action === "recovery" || action === "verification";
   const window = registration ? 60 * 60 * 1000 : 15 * 60 * 1000;
   // A shared database budget cannot be bypassed with forged forwarding headers.
   // Check it first so random email addresses cannot create unbounded buckets.
@@ -70,6 +73,7 @@ export async function loginAccount(d: PlatformDatabase, raw: unknown, previousTo
   const credential = await d.prepare(`${credentialSql} WHERE email=?`).bind(b.email).first<Credential>();
   if (!(await verifyPassword(b.password, credential?.passwordHash ?? null)) || !credential)
     throw new AuthError(401, "Email atau password tidak sesuai.");
+  await requireVerifiedEmail(d, credential.userId);
   const user = await registerIdentity(d, credential, false);
   const token = randomBytes(32).toString("base64url"), hash = digest(token), now = Date.now();
   const statements = [

@@ -33,13 +33,27 @@ try {
   assert.ok(html.includes("Selamat datang kembali"));
   assert.ok(html.includes("Daftar"));
   assert.equal((await (await fetch(base + "/api/registration")).json()).enabled, true);
+  for (const path of ["/forgot-password", "/verify-email", "/reset-password"]) {
+    const page = await fetch(base + path); assert.equal(page.status, 200); assert.match(page.headers.get("cache-control"), /no-store/);
+  }
+  assert.equal((await fetch(base + "/api/account-email", { headers: { "oai-authenticated-user-id": "access-owner" } })).status, 401);
+  assert.equal((await fetch(base + "/api/email-settings", { headers: { "oai-authenticated-user-id": "access-owner" } })).status, 401);
+  assert.equal((await post("/api/account-email", { action: "requestReset", email: "missing@ci.example" }, undefined, { Origin: "https://evil.example.com" })).status, 403);
+  assert.equal((await post("/api/account-email", { action: "requestReset", email: "missing@ci.example", userId: "access-owner" })).status, 400);
   assert.equal((await fetch(base + "/dashboard", { redirect: "manual" })).status, 307);
+  assert.equal((await fetch(base + "/notifications", { redirect: "manual" })).status, 307);
+  assert.equal((await fetch(base + "/api/notifications", { headers: { "oai-authenticated-user-id": "access-owner" } })).status, 401);
   assert.equal((await fetch(base + "/api/access", { headers: { "oai-authenticated-user-id": "access-owner", "oai-authenticated-user-email": "owner@fake.example", "x-forwarded-user": "owner" } })).status, 401);
   assert.equal((await post("/api/auth", { action: "login", email: "operator@ci.example", password: "CI-owner-passphrase-unique-only" }, null, { Origin: "https://evil.example" })).status, 403);
   const ownerResponse = await post("/api/auth", { action: "login", email: "operator@ci.example", password: "CI-owner-passphrase-unique-only", returnTo: "//evil.example" });
   assert.equal(ownerResponse.status, 200);
   const owner = session(ownerResponse);
   assert.equal((await ownerResponse.json()).redirect, "/dashboard");
+  const mailSettingsResponse = await fetch(base + "/api/email-settings", { headers: { Cookie: owner } });
+  assert.equal(mailSettingsResponse.status, 200); assert.match(mailSettingsResponse.headers.get("cache-control"), /no-store/);
+  const mailSettings = await mailSettingsResponse.json(); assert.equal(mailSettings.enabled, false);
+  assert.equal((await post("/api/email-settings", { action: "enable", version: mailSettings.version }, owner, { Origin: "https://evil.example.com" })).status, 403);
+  assert.equal((await post("/api/email-settings", { action: "enable", version: mailSettings.version }, owner)).status, 400);
   const ownerAccount = await fetch(base + "/api/account", { headers: { Cookie: owner } });
   assert.equal(ownerAccount.status, 200, "Owner dashboard data must load after login.");
   assert.match(ownerAccount.headers.get("cache-control"), /no-store/);
@@ -62,7 +76,10 @@ try {
   assert.equal((await post("/api/account", { action: "enroll", courseId: course }, learner)).status, 200);
   assert.equal((await post("/api/registration", { enabled: false }, learner)).status, 403);
   assert.equal((await fetch(base + "/api/tutors", { headers: { Cookie: learner } })).status, 403);
+  assert.equal((await fetch(base + "/api/email-settings", { headers: { Cookie: learner } })).status, 403);
   const pending = await (await fetch(base + "/api/access", { headers: { Cookie: learner } })).json();
+  const ownerFeed = await (await fetch(base + "/api/notifications", { headers: { Cookie: owner } })).json();
+  assert.ok(ownerFeed.items.some((n) => n.title === "Akun siswa menunggu persetujuan"));
   const approved = await post("/api/access", { userId: pending.user.id, version: pending.version, status: "active", reason: "CI HTTP approval" }, owner);
   assert.equal(approved.status, 200);
   const account = await fetch(base + "/api/account", { headers: { Cookie: learner } });
@@ -70,6 +87,18 @@ try {
   const data = await account.json();
   assert.equal(data.user.email, "web-learner@ci.example");
   assert.equal(data.user.role, "student");
+  const notificationResponse = await fetch(base + "/api/notifications", { headers: { Cookie: learner } });
+  assert.equal(notificationResponse.status, 200);
+  assert.match(notificationResponse.headers.get("cache-control"), /no-store/);
+  const learnerFeed = await notificationResponse.json();
+  const approval = learnerFeed.items.find((n) => n.kind === "access");
+  assert.ok(approval); assert.equal(approval.readAt, null);
+  const read = { action: "markRead", ids: [approval.id] };
+  assert.equal((await post("/api/notifications", read, learner, { Origin: "https://evil.example" })).status, 403);
+  assert.equal((await post("/api/notifications", { ...read, userId: ownerData.user.id }, learner)).status, 400);
+  assert.equal((await post("/api/notifications", { action: "markRead", ids: ["f".repeat(64)] }, learner)).status, 409);
+  assert.equal((await post("/api/notifications", read, learner)).status, 200);
+  assert.ok((await (await fetch(base + "/api/notifications", { headers: { Cookie: learner } })).json()).items.find((n) => n.id === approval.id).readAt);
   assert.ok(data.courses.some((c) => c.id === course));
   assert.equal((await post("/api/studio", { action: "saveCourse", course: {} }, learner)).status, 403);
   assert.equal((await post("/api/account", { action: "enroll", courseId: course }, learner)).status, 200);
@@ -78,6 +107,7 @@ try {
   assert.equal((await post("/api/access", { userId: data.user.id, version: current.version, status: "suspended", reason: "CI HTTP suspend" }, owner)).status, 200);
   assert.equal((await fetch(base + "/api/account", { headers: { Cookie: learner } })).status, 403);
   assert.equal((await fetch(base + "/api/access", { headers: { Cookie: learner } })).status, 200);
+  assert.ok((await (await fetch(base + "/api/notifications", { headers: { Cookie: learner } })).json()).items.every((n) => n.kind === "access"));
   const invite = await post("/api/tutors", { action: "invite", invitation: { email: "web-tutor@ci.example", displayName: "Web Tutor", classId: null } }, owner);
   assert.equal(invite.status, 201);
   const invitation = await invite.json();
