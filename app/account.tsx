@@ -202,6 +202,7 @@ export default function Account({
           </span>
           <span>{data?.user.name || "Akun saya"}</span>
         </a>
+        <a className="account-logout" href="/logout" onClick={guard}><LogOut size={18} />Keluar</a>
       </header>
       <div className="account-layout">
         <aside className={`account-sidebar ${mobileMenu ? "mobile-nav-open" : ""}`}>
@@ -248,7 +249,6 @@ export default function Account({
                 Kelola course
               </a>
             )}
-            <a className="account-mobile-logout" href="/logout" onClick={guard}><LogOut size={19} />Keluar</a>
           </nav>
           <div className="account-sidebar-bottom">
             <p>
@@ -256,10 +256,6 @@ export default function Account({
               <br />
               satu pemahaman baru.
             </p>
-            <a href="/logout" onClick={guard}>
-              <LogOut size={17} />
-              Keluar
-            </a>
           </div>
         </aside>
         <main id="account-main" className="account-main">

@@ -1373,3 +1373,6 @@ textarea { resize:vertical; }
   .outline.mobile-open { top:0; height:100dvh; z-index:40; }
 }
 @media(max-width:540px) { .topbar nav { margin-left:0; } }
+
+.topbar > .studio-logout { gap:6px; min-height:44px; border:1px solid #cadcda; border-radius:8px; font-size:13px; font-weight:600; color:#096b64; flex-shrink:0; }
+.topbar > .studio-logout:hover { background:#edf5f3; }

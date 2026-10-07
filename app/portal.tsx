@@ -18,6 +18,7 @@ import {
   MapPin,
   Loader2,
   LogIn,
+  LogOut,
 } from "lucide-react";
 import type { CatalogCourse, CatalogState } from "@/lib/catalog";
 import "./portal.css";
@@ -170,7 +171,7 @@ export default function Portal({
             {data?.user ? <BookOpen size={17} /> : <LogIn size={17} />}{" "}
             {data?.user ? "Dashboard" : "Masuk"}
           </a>
-          {!data?.user && <a className="portal-register" href="/register">Daftar</a>}
+          {data?.user ? <a className="portal-login portal-logout" href="/logout"><LogOut size={17} />Keluar</a> : <a className="portal-register" href="/register">Daftar</a>}
         </div>
       </header>
       <main id="portal-content">

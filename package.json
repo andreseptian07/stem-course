@@ -20,7 +20,8 @@
     "db:migrate:mariadb": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/mariadb-migrate.mjs",
     "test:mariadb": "node --experimental-strip-types --test tests/mariadb.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-access.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-learning.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-auth.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-tutors.integration.test.mjs",
     "auth:admin": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/auth-admin.mjs",
-    "test:http": "node scripts/test-node-http.mjs"
+    "test:http": "node scripts/test-node-http.mjs",
+    "dev:hosting-db": "node scripts/dev-hosting-db.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

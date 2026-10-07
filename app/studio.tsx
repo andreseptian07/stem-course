@@ -232,16 +232,9 @@ export default function Studio() {
             </button>
           ))}
         </nav>
-        {state && (
-          <a
-            className="icon-button"
-            title="Keluar"
-            aria-label="Keluar"
-            href="/logout"
-          >
-            <LogOut size={16} />
-          </a>
-        )}
+        <a className="icon-button studio-logout" href="/logout" onClick={(event) => {
+          if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
+        }}><LogOut size={16} /><span>Keluar</span></a>
         <a
           className="avatar"
           title="Dashboard dan profil saya"

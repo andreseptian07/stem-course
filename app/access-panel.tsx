@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, Layers3, RefreshCw } from "lucide-react";
+import { ShieldCheck, Layers3, RefreshCw, LogOut } from "lucide-react";
 import "./account.css";
 import "./access.css";
 import TutorManagement from "./tutor-management";
@@ -74,6 +74,7 @@ export default function Access() {
           STEM Studio
         </a>
         <a href="/courses">Jelajahi course</a>
+        <a className="account-logout" href="/logout"><LogOut size={18} />Keluar</a>
       </header>
       <main className="access-main" id="access-main">
         <div className="access-heading">

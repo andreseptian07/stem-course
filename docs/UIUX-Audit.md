@@ -18,3 +18,9 @@ Komponen halaman akun diuji melalui preview lokal yang memakai data visual Siswa
 Alur backend sebenarnya diperiksa terpisah melalui tes unit serta CI MariaDB 10.11/11.8 dan server Node produksi dengan database sementara. Pengujian web live memeriksa halaman publik, tombol Daftar dan katalog. Akun produksi, izin pengguna, materi dan kiriman tidak digunakan sebagai fixture atau diubah untuk pengujian visual.
 
 Ini audit implementasi internal, belum merupakan penelitian usability dengan siswa/Tutor nyata atau sertifikasi aksesibilitas menyeluruh. Langkah berikutnya adalah meminta beberapa pengguna menyelesaikan pendaftaran, membuka course, mengirim tugas dan memberi review, lalu mengamati kesulitan mereka.
+
+## Perbaikan lanjutan: Keluar
+
+Tautan Keluar selalu tersedia di header dashboard, profil, kelas, pengelolaan akses, dan ruang belajar. Di beranda/katalog, tautan ditampilkan untuk pengguna yang masuk. Tautan membuka halaman konfirmasi Keluar; sesi diakhiri melalui POST agar kunjungan GET tidak mengeluarkan akun. Header mobile memakai dua baris untuk mempertahankan tombol yang terlihat tanpa membuka menu atau menggulir halaman.
+
+Perubahan lanjutan ini diverifikasi di lokal dan belum di-deploy, sesuai instruksi pengguna. Jalankan `npm run dev:hosting-db` lalu buka `http://127.0.0.1:5173`. Database menggunakan konfigurasi Hostinger di `.env.local`; pemeriksaan koneksi berhasil melalui TLS. Jangan gunakan database tersebut untuk seed/reset atau tes integrasi dengan data buatan.

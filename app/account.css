@@ -948,3 +948,14 @@
 }
 .account-sidebar > .eyebrow { color:#526c75; }
 @media(max-width:760px) { .profile-fields input:not([type="checkbox"]), .profile-fields textarea { font-size:16px; } }
+
+/* Keep sign-out visible independently of sidebar height or mobile menu state. */
+.account-header > .account-logout { display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:44px; padding:10px 12px; border:1px solid #cadcda; border-radius:8px; color:#096b64; font-size:14px; font-weight:600; flex-shrink:0; }
+.account-header > .account-logout:hover { background:#edf5f3; }
+@media(max-width:760px) {
+  .account-header { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px 12px; }
+  .account-header .account-brand { grid-row:1; grid-column:1; min-width:0; }
+  .account-header > .account-logout { grid-row:1; grid-column:2; }
+  .account-header > a:nth-child(2) { grid-row:2; grid-column:1; margin-left:0; justify-self:start; }
+  .account-header .account-user { grid-row:2; grid-column:2; justify-self:end; }
+}

@@ -297,6 +297,7 @@ export default function Classes() {
           Jelajahi course
         </a>
         <a className="account-user" href="/profile" aria-label="Buka profil saya" onClick={guard}><span className="account-avatar teal"><UserRound size={19} /></span><span>{data?.user.name || "Akun saya"}</span></a>
+        <a className="account-logout" href="/logout" onClick={guard}><LogOut size={18} />Keluar</a>
       </header>
       <div className="account-layout">
         <aside className={`account-sidebar ${mobileMenu ? "mobile-nav-open" : ""}`}>
@@ -333,7 +334,6 @@ export default function Classes() {
                 Kelola course
               </a>
             )}
-            <a className="account-mobile-logout" href="/logout" onClick={guard}><LogOut size={19} />Keluar</a>
           </nav>
         </aside>
         <main className="account-main classes-main" id="classes-main">
