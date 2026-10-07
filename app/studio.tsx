@@ -112,6 +112,21 @@ export default function Studio() {
         (p) => p.lessonId === lesson.id && p.revision === lesson.revision,
       )
     : undefined;
+  function updateLocation(nextView: string, nextCourse = course?.id, nextLesson = lesson?.id) {
+    const query = new URLSearchParams();
+    if (nextCourse) query.set("course", nextCourse);
+    if (nextLesson) query.set("lesson", nextLesson);
+    if (nextView !== "learn") query.set("view", nextView);
+    history.replaceState(null, "", `/learn${query.size ? "?" + query.toString() : ""}`);
+  }
+  function navigateView(nextView: string) {
+    if (nextView === view) return;
+    if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) return;
+    setView(nextView);
+    setAdminDirty(false);
+    setMobile(false);
+    updateLocation(nextView);
+  }
   const selectLesson = (l: PublicLesson) => {
     setNotice("");
     if (l.locked) {
@@ -122,7 +137,7 @@ export default function Studio() {
     setDiscussion(false);
     setMobile(false);
     setView("learn");
-    history.replaceState(null, "", `?course=${course?.id}&lesson=${l.id}`);
+    updateLocation("learn", course?.id, l.id);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const toolsState = useRef({ state, course, lesson, view, selectLesson });
@@ -219,17 +234,7 @@ export default function Studio() {
               aria-label={label}
               aria-pressed={view === key}
               className={view === key ? "active" : ""}
-              onClick={() => {
-                if (
-                  view === "admin" &&
-                  key !== "admin" &&
-                  adminDirty &&
-                  !confirm("Abaikan perubahan course yang belum disimpan?")
-                )
-                  return;
-                setView(key);
-                setMobile(false);
-              }}
+              onClick={() => navigateView(key)}
             >
               <Icon size={17} />
               {label}
@@ -281,6 +286,8 @@ export default function Studio() {
             setCourseId(c);
             setLessonId(l);
             setView("learn");
+            setAdminDirty(false);
+            updateLocation("learn", c, l);
           }}
         />
       ) : view === "sessions" ? (
@@ -300,10 +307,11 @@ export default function Studio() {
           <h1>Course pertama sedang disiapkan</h1>
           <p>Materi akan muncul di sini setelah diterbitkan pengajar.</p>
           {state.user.role === "owner" && (
-            <button className="primary" onClick={() => setView("admin")}>
+            <button className="primary" onClick={() => navigateView("admin")}>
               Buat course
             </button>
           )}
+          <a className="secondary button-link" href="/courses">Jelajahi course</a>
         </main>
       ) : (
         <div className="workspace">
@@ -320,6 +328,7 @@ export default function Studio() {
                   setCourseId(e.target.value);
                   setLessonId("");
                   setDiscussion(false);
+                  updateLocation("learn", e.target.value, "");
                 }}
               >
                 {state.courses.map((c) => (
@@ -538,7 +547,7 @@ export default function Studio() {
                     </p>
                     <button
                       className="text-button"
-                      onClick={() => setView("sessions")}
+                      onClick={() => navigateView("sessions")}
                     >
                       Lihat jadwal sesi
                     </button>
@@ -548,7 +557,8 @@ export default function Studio() {
             ) : (
               <div className="empty">
                 <h2>Belum ada materi</h2>
-                <p>Tambahkan materi pertama dari Kelola course.</p>
+                <p>{state.user.role === "owner" ? "Tambahkan materi pertama dari Kelola course." : "Materi course ini sedang disiapkan oleh pengajar."}</p>
+                {state.user.role === "owner" ? <button className="primary" type="button" onClick={() => navigateView("admin")}>Kelola course</button> : <a className="secondary button-link" href="/courses">Jelajahi course lain</a>}
               </div>
             )}
           </main>
@@ -1227,6 +1237,7 @@ function SessionList({
           <p>
             Jadwal live dan tatap muka akan muncul setelah ditambahkan pengajar.
           </p>
+          <a className="secondary button-link" href="/classes">Lihat kelas & Tutor</a>
         </div>
       ) : (
         <div className="session-grid">

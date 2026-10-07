@@ -422,11 +422,9 @@ export default function Account({
                     <p>
                       {data.courses.length
                         ? "Pilih filter Semua untuk melihat daftar course."
-                        : "Jelajahi katalog, buka detail course, lalu pilih Mulai belajar."}
+                        : "Jelajahi katalog, buka detail course, lalu pilih Daftar course."}
                     </p>
-                    <a className="primary button-link" href="/courses">
-                      Jelajahi course
-                    </a>
+                    {data.courses.length ? <button className="primary" type="button" onClick={() => setFilter("all")}>Tampilkan semua course saya</button> : <a className="primary button-link" href="/courses">Jelajahi course</a>}
                   </div>
                 )}
               </section>
