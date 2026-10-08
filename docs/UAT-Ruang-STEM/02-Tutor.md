@@ -4,7 +4,7 @@
 
 Baca [persiapan](00-Mulai-Di-Sini.md), ikuti [urutan lintas akun](05-Siklus-Lintas-Akun.md), dan isi [hasil](06-Hasil-dan-Temuan.md). Tutor A menangani Kelas A, Tutor B menangani Kelas B. Keduanya tidak menjadi anggota kelas Tutor lain. Jalankan pula `UM-01`–`UM-17` pada [pengujian umum](04-Pengujian-Umum.md).
 
-Tutor mengelola pendampingan kelas yang ditugaskan. Pada versi ini Tutor belum dapat mengedit kurikulum/course global; rencana tim kurikulum bukan fitur tersedia untuk dinilai Lulus.
+Tutor mengelola pendampingan kelas yang ditugaskan. Hak Tutor sendiri tidak memberi akses editor course global. Jika Admin juga menugaskannya ke Tim Kurikulum, Tutor dapat menyusun draf pada course tersebut melalui workspace kurikulum, lalu mengajukannya untuk review Admin. Jalankan [07 — Tim Kurikulum](07-Tim-Kurikulum.md) untuk penugasan tambahan ini.
 
 ## 1. Aktivasi dan batas hak
 
@@ -16,7 +16,7 @@ Tutor mengelola pendampingan kelas yang ditugaskan. Pada versi ini Tutor belum d
 | TUT-04 | Wajib | Buka kembali tautan yang sudah digunakan; coba undangan yang dibatalkan/diganti oleh Admin. | Tautan sekali pakai dan tidak valid ditolak; tidak menggandakan hak/penugasan. |
 | TUT-05 | Bersyarat: waktu | Simpan undangan uji yang tidak dipakai selama lebih dari 7 hari; buka kembali. | Undangan kedaluwarsa ditolak. Jangan mengubah jam/database produksi untuk mempercepat kasus. |
 | TUT-06 | Wajib | Sebelum penugasan, buka Dashboard dan Kelas; sesudah Admin menugaskan Tutor A ke Kelas A, refresh. | Kondisi tanpa kelas jelas; sesudah penugasan kelas yang benar tampil. Tidak otomatis mendapat semua kelas. |
-| TUT-07 | Wajib | Buka langsung `/learn?view=admin`, `/access`, dan URL ekspor laporan yang disalin Admin dari data uji. | Tidak dapat mengedit course, menyetujui pengguna, mengundang Tutor, atau membaca laporan global. `/access` boleh menunjukkan status akun sendiri. |
+| TUT-07 | Wajib | Buka langsung `/learn?view=admin`, `/access`, dan URL ekspor laporan yang disalin Admin dari data uji. | Tidak dapat memakai editor course Admin, menyetujui pengguna, mengundang Tutor, atau membaca laporan global. Penyusunan draf hanya melalui workspace untuk course yang ditugaskan. `/access` boleh menunjukkan status akun sendiri. |
 
 ## 2. Dashboard dan pemantauan siswa
 
