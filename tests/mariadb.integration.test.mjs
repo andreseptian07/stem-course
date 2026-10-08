@@ -71,7 +71,7 @@ test("MariaDB foundation on a disposable CI database", {
       assert.equal(await applyMariaDbMigrations(pool), 0);
       assert.equal((await db.select().from(users)).length, 2);
       const [rows] = await pool.query("SELECT COUNT(*) AS count FROM __stem_mariadb_migrations");
-      assert.equal(Number(rows[0].count), 8);
+      assert.equal(Number(rows[0].count), 9);
       // A changed/unknown migration history is refused rather than reapplied.
       const [journal] = await pool.query("SELECT id,hash FROM __stem_mariadb_migrations");
       try {
