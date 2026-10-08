@@ -47,7 +47,7 @@ test("operator errors never include driver messages, SQL or password", () => {
 });
 test("MariaDB schema preserves all platform tables, wide content and millisecond leases", () => {
   const tables = Object.values(schema).map(getTableConfig);
-  assert.equal(tables.length, 31);
+  assert.equal(tables.length, 34);
   assert.equal(tables.find((t) => t.name === "courses").columns.find((c) => c.name === "data").getSQLType(), "longtext");
   assert.equal(tables.find((t) => t.name === "attempts").columns.find((c) => c.name === "poll_at").getSQLType(), "bigint");
   const sql = fs.readFileSync("mariadb/0000_big_captain_marvel.sql", "utf8");
@@ -74,3 +74,5 @@ test("MariaDB schema preserves all platform tables, wide content and millisecond
   assert.ok(mediaSql.includes("ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin"));
   assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM|ALTER TABLE/i.test(mediaSql));
 });
+
+test("curriculum migration only adds tables with binary identifiers",()=>{const sql=fs.readFileSync("mariadb/0008_green_sharon_carter.sql","utf8");assert.equal((sql.match(/ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin/g)||[]).length,3);assert.ok(!/DROP TABLE|TRUNCATE|DELETE FROM|ALTER TABLE/i.test(sql));});

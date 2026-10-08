@@ -51,6 +51,8 @@ export async function notificationFeed(d: PlatformDatabase, u: PlatformUser, at 
       u.role === "owner" ? d.prepare("SELECT a.user_id AS id,a.created_at AS createdAt FROM user_access a WHERE a.status='pending' AND a.user_id!=? ORDER BY a.created_at DESC,a.user_id DESC LIMIT 100")
         .bind(u.id).all<{ id: string; createdAt: string }>() : Promise.resolve({ results: [] }),
     ]);
+    const curriculum=(await d.prepare("SELECT e.id,e.kind,e.detail,e.created_at AS createdAt FROM curriculum_events e WHERE e.kind IN ('submit','requestChanges','publish','memberGranted') AND (EXISTS(SELECT 1 FROM settings WHERE `key`='owner' AND value=?) OR EXISTS(SELECT 1 FROM curriculum_members m WHERE m.course_id=e.course_id AND m.user_id=? AND m.active=1)) ORDER BY e.created_at DESC,e.id DESC LIMIT 50").bind(u.id,u.id).all<{id:string;kind:string;detail:string;createdAt:string}>()).results;
+    for(const e of curriculum) add("curriculum",`curriculum:${e.id}`,e.kind==='submit'?"Draf kurikulum menunggu review":e.kind==='requestChanges'?"Draf kurikulum perlu perbaikan":e.kind==='publish'?"Draf kurikulum disetujui":"Penugasan Tim Kurikulum",e.kind==='memberGranted'?"Buka workspace untuk melihat course yang ditugaskan.":e.detail,"/curriculum",e.createdAt);
     for (const g of grants.results) add("invitation", `tutor:${g.createdAt}`, "Hak Tutor Anda aktif", "Buka dashboard untuk melihat penugasan dan jadwal mengajar.", "/dashboard", g.createdAt);
     for (const c of classes.results) add("class", `class:${c.id}:${c.version}`, "Penugasan kelas Anda", c.name, classLink(c.id), c.createdAt);
     for (const t of tasks.results) add("task", `task:${t.id}:${t.version}`, "Tugas tersedia: " + t.title, t.className, taskLink(t.classId, t.id), t.createdAt);

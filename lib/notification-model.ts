@@ -1,4 +1,4 @@
-export type NotificationKind = "access" | "invitation" | "class" | "task" | "review" | "submission" | "announcement" | "session" | "reminder";
+export type NotificationKind = "curriculum" | "access" | "invitation" | "class" | "task" | "review" | "submission" | "announcement" | "session" | "reminder";
 export type NotificationItem = {
   id: string;
   kind: NotificationKind;

@@ -305,3 +305,21 @@ export const mediaFiles = sqliteTable("media_files", {
   bound: integer("bound").notNull().default(0),
   createdAt: text("created_at").notNull(),
 }, (t) => [index("media_owner_scope").on(t.ownerId,t.scope), index("media_course").on(t.courseId)]);
+
+export const curriculumMembers = sqliteTable("curriculum_members", {
+  courseId: text("course_id").notNull(), userId: text("user_id").notNull(),
+  proof: text("proof").notNull(),
+  active: integer("active").notNull(), version: integer("version").notNull(),
+  grantedBy: text("granted_by").notNull(), updatedAt: text("updated_at").notNull(),
+}, t => [primaryKey({columns:[t.courseId,t.userId]})]);
+export const curriculumDrafts = sqliteTable("curriculum_drafts", {
+  courseId: text("course_id").primaryKey(), data: text("data").notNull(),
+  baseVersion: integer("base_version").notNull(), version: integer("version").notNull(),
+  state: text("state").notNull(), updatedBy: text("updated_by").notNull(),
+  updatedAt: text("updated_at").notNull(), note: text("note").notNull(), proof: text("proof").notNull(),
+});
+export const curriculumEvents = sqliteTable("curriculum_events", {
+  id: text("id").primaryKey(), courseId: text("course_id").notNull(),
+  actorId: text("actor_id").notNull(), kind: text("kind").notNull(),
+  detail: text("detail").notNull(), createdAt: text("created_at").notNull(),
+}, t => [index("curriculum_events_course_time").on(t.courseId,t.createdAt)]);

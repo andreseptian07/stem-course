@@ -218,7 +218,7 @@ export default function Account({
       </header>
       <div className="account-layout">
         <aside className={`account-sidebar ${mobileMenu ? "mobile-nav-open" : ""}`}>
-          <span className="eyebrow">{data?.user.role === "owner" ? "RUANG SUPER ADMIN" : data?.user.role === "tutor" ? "RUANG TUTOR" : "RUANG SISWA"}</span>
+          <span className="eyebrow">{data?.user.role === "owner" ? "RUANG SUPER ADMIN" : data?.user.role === "tutor" ? "RUANG TUTOR" : data?.curriculum ? "RUANG KURIKULUM" : "RUANG SISWA"}</span>
           <button type="button" className="account-menu-toggle" aria-expanded={mobileMenu} aria-controls="account-navigation" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={19} />Menu akun<ChevronDown size={17} /></button>
           <nav id="account-navigation" aria-label="Navigasi akun">
             <a
@@ -239,6 +239,7 @@ export default function Account({
               <UserRound size={19} />
               Profil saya
             </a>
+            {data?.curriculum && <a href="/curriculum" onClick={guard}><Layers3 size={19} />Tim Kurikulum</a>}
             <a href="/certificates" onClick={guard}><CheckCircle2 size={19} />Sertifikat saya</a>
             <a href="/classes" onClick={guard}>
               <Users size={19} />
@@ -293,7 +294,7 @@ export default function Account({
             {view === "dashboard" && data && <button type="button" className="secondary" onClick={reload} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "spin" : undefined} />{refreshing ? "Memuat…" : "Muat ulang"}</button>}
             {view === "profile" && data && (
               <span className="pill">
-                {data.user.role === "owner" ? "Super Admin" : data.user.role === "tutor" ? "Tutor" : "Siswa"}
+                {data.user.role === "owner" ? "Super Admin" : data.user.role === "tutor" ? "Tutor" : data.curriculum ? "Tim Kurikulum" : "Siswa"}
               </span>
             )}
           </div>

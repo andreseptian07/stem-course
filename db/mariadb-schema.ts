@@ -355,3 +355,21 @@ export const mediaFiles = mysqlTable("media_files", {
   bound: int("bound").notNull().default(0),
   createdAt: varchar("created_at", {length:32}).notNull(),
 }, (t) => [index("media_owner_scope").on(t.ownerId,t.scope), index("media_course").on(t.courseId)]);
+
+export const curriculumMembers = mysqlTable("curriculum_members", {
+  courseId: varchar("course_id", {length:191}).notNull(), userId: varchar("user_id", {length:191}).notNull(),
+  proof: varchar("proof", {length:191}).notNull(),
+  active: int("active").notNull(), version: int("version").notNull(),
+  grantedBy: varchar("granted_by", {length:191}).notNull(), updatedAt: varchar("updated_at", {length:191}).notNull(),
+}, t => [primaryKey({columns:[t.courseId,t.userId]})]);
+export const curriculumDrafts = mysqlTable("curriculum_drafts", {
+  courseId: varchar("course_id", {length:191}).primaryKey(), data: longtext("data").notNull(),
+  baseVersion: int("base_version").notNull(), version: int("version").notNull(),
+  state: varchar("state", {length:191}).notNull(), updatedBy: varchar("updated_by", {length:191}).notNull(),
+  updatedAt: varchar("updated_at", {length:191}).notNull(), note: longtext("note").notNull(), proof: varchar("proof", {length:191}).notNull(),
+});
+export const curriculumEvents = mysqlTable("curriculum_events", {
+  id: varchar("id", {length:191}).primaryKey(), courseId: varchar("course_id", {length:191}).notNull(),
+  actorId: varchar("actor_id", {length:191}).notNull(), kind: varchar("kind", {length:191}).notNull(),
+  detail: longtext("detail").notNull(), createdAt: varchar("created_at", {length:191}).notNull(),
+}, t => [index("curriculum_events_course_time").on(t.courseId,t.createdAt)]);

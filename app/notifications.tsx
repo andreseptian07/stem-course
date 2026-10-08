@@ -7,6 +7,7 @@ import "./account.css";
 import "./notifications.css";
 
 const labels: Record<NotificationKind, string> = {
+  curriculum: "Kurikulum",
   access: "Akses akun", invitation: "Tutor", class: "Penugasan kelas", task: "Tugas",
   review: "Hasil review", submission: "Review Tutor", announcement: "Pengumuman", session: "Jadwal", reminder: "Pengingat",
 };

@@ -11,7 +11,7 @@
     "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/access.test.mjs tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/mariadb-config.test.mjs tests/mariadb-adapter.test.mjs tests/learning-data.test.mjs tests/auth.test.mjs tests/tutors.test.mjs tests/notifications.test.mjs tests/account-email.test.mjs tests/email-settings.test.mjs tests/media.test.mjs tests/certificates.test.mjs tests/reports.test.mjs",
+    "test": "node --experimental-strip-types --test tests/access.test.mjs tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/mariadb-config.test.mjs tests/mariadb-adapter.test.mjs tests/learning-data.test.mjs tests/auth.test.mjs tests/tutors.test.mjs tests/notifications.test.mjs tests/account-email.test.mjs tests/email-settings.test.mjs tests/media.test.mjs tests/certificates.test.mjs tests/reports.test.mjs tests/curriculum.test.mjs",
     "check": "npm run typecheck && npm test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",

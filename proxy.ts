@@ -24,7 +24,7 @@ export function proxy(req: NextRequest) {
   );
   if (
     path.startsWith("/api/") || path.startsWith("/certificates") ||
-    ["/dashboard", "/profile", "/notifications", "/classes", "/access", "/learn", "/login", "/register", "/logout", "/password", "/forgot-password", "/reset-password", "/verify-email", "/tutor/activate"].includes(path)
+    ["/curriculum", "/dashboard", "/profile", "/notifications", "/classes", "/access", "/learn", "/login", "/register", "/logout", "/password", "/forgot-password", "/reset-password", "/verify-email", "/tutor/activate"].includes(path)
   )
     res.headers.set("Cache-Control", "private, no-store");
   return res;

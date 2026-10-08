@@ -1,3 +1,4 @@
+import { curriculumScenarios } from "./curriculum-scenarios.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMariaDb } from "../db/mariadb.ts";
@@ -21,5 +22,6 @@ test("learning features use the real MariaDB adapter", { skip: process.env.MARIA
     await mediaScenarios(t, database);
     await certificateScenarios(t, database);
     await reportScenarios(t, database);
+    await curriculumScenarios(t, database);
   } finally { await pool.end(); }
 });

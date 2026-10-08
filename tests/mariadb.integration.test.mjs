@@ -13,11 +13,11 @@ test("MariaDB foundation on a disposable CI database", {
   const { pool, db, database } = createMariaDb();
   try {
     await t.test("new database receives the schema and migration journal", async () => {
-      assert.equal(await applyMariaDbMigrations(pool), 8);
+      assert.equal(await applyMariaDbMigrations(pool), 9);
       const [tables] = await pool.query("SELECT TABLE_NAME AS name, ENGINE AS engine, TABLE_COLLATION AS collation FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()");
-      assert.equal(tables.length, 32);
+      assert.equal(tables.length, 35);
       const business = tables.filter((row) => row.name !== "__stem_mariadb_migrations");
-      assert.equal(business.length, 31);
+      assert.equal(business.length, 34);
       for (const table of business) {
         assert.equal(table.engine, "InnoDB");
         assert.equal(table.collation, "utf8mb4_bin");

@@ -63,7 +63,8 @@ export async function registerIdentity(
       "Pemilik platform belum disiapkan. Hubungi pengelola platform.",
     );
   const tutor = await d.prepare("SELECT 1 WHERE EXISTS(SELECT 1 FROM tutor_accounts WHERE user_id=? AND active=1) OR EXISTS(SELECT 1 FROM cohorts WHERE mentor_id=? AND status!='archived')").bind(signed.userId, signed.userId).first();
-  const role = owner.value === signed.userId ? "owner" : tutor ? "tutor" : "student";
+  const curriculum = await d.prepare("SELECT 1 FROM curriculum_members WHERE user_id=? AND active=1").bind(signed.userId).first();
+  const role = owner.value === signed.userId ? "owner" : tutor ? "tutor" : curriculum ? "curriculum" : "student";
   const profile = await d
     .prepare("SELECT data FROM profiles WHERE user_id=?")
     .bind(signed.userId)

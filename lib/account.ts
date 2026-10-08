@@ -96,4 +96,5 @@ export type AccountState = {
   sessions: AccountSession[];
   projects: DashboardProject[];
   teaching: TutorDashboard | null;
+  curriculum?: boolean;
 };

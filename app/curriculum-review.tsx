@@ -1,0 +1,13 @@
+import type { Course } from "@/lib/model";
+export default function CurriculumReview({ course }: {
+    course: Course;
+}) {
+    return <div className="curriculum-preview"><h3>{course.title}</h3><p>{course.description}</p><p>{course.category} · {course.level} · {course.certificateEnabled ? 'Sertifikat diaktifkan' : 'Tanpa sertifikat'}</p>
+ {course.overview && <><h4>Capaian belajar</h4><ul>{course.overview.outcomes.map((s, i) => <li key={i}>{s}</li>)}</ul><h4>Prasyarat</h4><ul>{course.overview.requirements.map((s, i) => <li key={i}>{s}</li>)}</ul><p>Sasaran: {course.overview.audience}</p><p>Pendamping: {course.overview.mentorName} · {course.overview.mentorBio}</p></>}
+ {course.lessons.map((lesson, index) => <details key={lesson.id} open={index === 0}><summary>{index + 1}. {lesson.module} / {lesson.title} · {lesson.minutes} menit</summary><div className="curriculum-lesson-preview">
+ {lesson.blocks.map(block => <div className={'curriculum-block ' + block.type} key={block.id}>{block.type === 'heading' ? <h4>{block.content}</h4> : ['image', 'video', 'file'].includes(block.type) ? <><a href={block.content} target="_blank" rel="noreferrer">{block.caption || 'Buka ' + (block.type === 'file' ? 'lampiran' : block.type === 'image' ? 'gambar' : 'video')}</a><small>{block.content}</small></> : block.type === 'code' ? <pre className="curriculum-content">{block.content}</pre> : <p style={{ whiteSpace: 'pre-wrap' }}>{block.content}</p>}</div>)}
+ {lesson.quiz && <section><h4>Tes pemahaman · {lesson.quiz.mode === 'required' ? 'Wajib lulus' : 'Review'} · nilai minimum {lesson.quiz.threshold}</h4><p>Batas percobaan: {lesson.quiz.maxAttempts || 'Tanpa batas'} · Pembahasan: {lesson.quiz.feedback === 'always' ? 'Setiap percobaan' : lesson.quiz.feedback === 'after_pass' ? 'Setelah lulus' : 'Tidak ditampilkan'}</p>{lesson.quiz.questions.map((q, i) => <div key={q.id}><b>{i + 1}. {q.prompt}</b><ul>{q.options.map((answer, j) => <li key={j}>{q.correct.includes(j) ? '✓ ' : ''}{answer}</li>)}</ul><p>Pembahasan: {q.explanation}</p></div>)}</section>}
+ {lesson.exercise && <section><h4>Latihan kode · {lesson.exercise.language} · {lesson.exercise.required ? 'Wajib lulus' : 'Opsional'}</h4><p>{lesson.exercise.prompt}</p><pre className="curriculum-content">{lesson.exercise.starter}</pre><p>Batas percobaan: {lesson.exercise.maxAttempts || 'Tanpa batas'}</p>{lesson.exercise.tests.map((test, i) => <div key={i}><b>Test {i + 1}{test.hidden ? ' · tersembunyi untuk siswa' : ''}</b><pre className="curriculum-content">Input: {test.input}{'\n'}Hasil yang diharapkan: {test.expected}</pre></div>)}</section>}
+ </div></details>)}{!course.lessons.length && <p>Belum ada materi.</p>}
+ </div>;
+}

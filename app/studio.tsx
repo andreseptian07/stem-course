@@ -221,6 +221,7 @@ export default function Studio() {
           </strong>
         </a>
         <nav aria-label="Navigasi ruang belajar">
+          <a href="/curriculum" onClick={event=>{if(adminDirty&&!confirm("Abaikan perubahan course yang belum disimpan?"))event.preventDefault();}}>Tim Kurikulum</a>
           <a className="studio-dashboard" href="/dashboard" onClick={(event) => {
             if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
           }}><LayoutDashboard size={17} /><span>Dashboard</span></a>

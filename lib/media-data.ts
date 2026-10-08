@@ -1,3 +1,4 @@
+import { hasCurriculumAccess } from "./curriculum-access.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { writeFile, unlink, open } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -66,8 +67,8 @@ export async function normalizeImage(name: string, bytes: Uint8Array, avatar: bo
 }
 export async function canUploadMedia(d: PlatformDatabase, u: ClassUser, target: MediaTarget) {
   if (target.purpose === "course") {
-    if (u.role !== "owner")
-      throw new ClassError(403, "Hanya Super Admin yang dapat mengunggah materi course.");
+    if(u.role!=="owner" && !await hasCurriculumAccess(d,u,target.courseId))
+      throw new ClassError(403,"Anda belum ditugaskan ke Tim Kurikulum course ini.");
     if (!await d.prepare("SELECT id FROM courses WHERE id=?").bind(target.courseId).first())
       throw new ClassError(409, "Simpan course terlebih dahulu sebelum mengunggah berkas.");
   }
@@ -193,7 +194,7 @@ export async function readMedia(d: PlatformDatabase, u: ClassUser, id: string, e
     if (f.owner_id !== u.id || (await photoInfo(d, u.id, env))?.id !== id)
       throw new ClassError(404, "Foto profil tidak ditemukan.");
   }
-  else if (u.role !== "owner") {
+  else if (u.role !== "owner" && !(f.course_id && await hasCurriculumAccess(d,u,f.course_id))) {
     if (!f.course_id || !f.bound)
       throw new ClassError(404, "Berkas belum tersedia dalam course.");
     const c = await readCourse(d, f.course_id, u), p = await readProgress(d, u.id, c.id);

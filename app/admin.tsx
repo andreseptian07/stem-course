@@ -92,7 +92,9 @@ export default function Admin({
   reload,
   onPreview,
   onDirtyChange,
+  curriculum,
 }: {
+  curriculum?: {course: Course; save: (course: Course) => Promise<Course>};
   reload: () => Promise<void>;
   onPreview: (course: string, lesson: string) => void;
   onDirtyChange: (dirty: boolean) => void;
@@ -121,7 +123,7 @@ export default function Admin({
   }, [dirty, onDirtyChange]);
   async function load() {
     try {
-      const d = await api("/api/studio?admin=1");
+      const d = curriculum ? {courses:[curriculum.course]} : await api("/api/studio?admin=1");
       setData(d);
       if (!editing && d.courses[0]) {
         setEditing(d.courses[0]);
@@ -178,7 +180,7 @@ export default function Admin({
     setBusy(true);
     setError("");
     try {
-      const d = await api("/api/studio", {
+      const d = curriculum ? {course:await curriculum.save(editing)} : await api("/api/studio", {
         action: "saveCourse",
         course: {
           ...editing,
@@ -198,7 +200,7 @@ export default function Admin({
       setEditing(d.course);
       setDirty(false);
       setMessage("Perubahan tersimpan.");
-      const next = await api("/api/studio?admin=1");
+      const next = curriculum ? {courses:[d.course]} : await api("/api/studio?admin=1");
       setData(next);
       await reload();
     } catch (e: any) {
@@ -220,9 +222,9 @@ export default function Admin({
     <main className="admin-page">
       <div className="admin-heading">
         <div>
-          <div className="eyebrow teal">EDITOR COURSE</div>
-          <h1>Kelola pengalaman belajar</h1>
-          <p>Susun materi, tentukan capaian, dan dampingi prosesnya.</p>
+          <div className="eyebrow teal">{curriculum ? "DRAF TIM KURIKULUM" : "EDITOR COURSE"}</div>
+          <h1>{curriculum ? "Susun draf materi" : "Kelola pengalaman belajar"}</h1>
+          <p>{curriculum ? "Draf tersimpan terpisah. Ajukan untuk review setelah selesai menyusun." : "Susun materi, tentukan capaian, dan dampingi prosesnya."}</p>
         </div>
         <button
           className="primary"
@@ -233,7 +235,7 @@ export default function Admin({
           {busy ? "Menyimpan…" : "Simpan perubahan"}
         </button>
       </div>
-      <div className="admin-tabs">
+      {!curriculum && <div className="admin-tabs">
         {[
           ["content", "Konten & kurikulum", Layers3],
           ["sessions", "Sesi Tutor", CalendarDays],
@@ -251,7 +253,7 @@ export default function Admin({
             {label}
           </button>
         ))}
-      </div>
+      </div>}
       {error && (
         <div className="feedback warning" role="alert">
           {error}
@@ -433,7 +435,7 @@ export default function Admin({
                 ))}
               </select>
             </label>
-            <button
+            {!curriculum && <button
               className="secondary"
               onClick={() => {
                 if (dirty && !confirm("Abaikan perubahan yang belum disimpan?"))
@@ -455,7 +457,7 @@ export default function Admin({
             >
               <Plus size={17} />
               Course baru
-            </button>
+            </button>}
           </div>
           {editing && (
             <>
@@ -464,7 +466,7 @@ export default function Admin({
                   <Settings2 size={17} />
                   Pengaturan course{" "}
                   <span className="pill">
-                    {editing.published ? "Terbit" : "Draft"}
+                    {curriculum ? "Draf kurikulum" : editing.published ? "Terbit" : "Draft"}
                   </span>
                 </summary>
                 <div className="form-grid">
@@ -496,8 +498,8 @@ export default function Admin({
                       <option>Lanjutan</option>
                     </select>
                   </Field>
-                  <Field label="Status">
-                    <select
+                  <Field label={curriculum ? "Status course saat ini" : "Status"}>
+                    <select disabled={!!curriculum}
                       value={editing.published ? "published" : "draft"}
                       onChange={(e) =>
                         edit({
@@ -522,6 +524,7 @@ export default function Admin({
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
+                      disabled={!!curriculum}
                       checked={editing.sample}
                       onChange={(e) =>
                         edit({ ...editing, sample: e.target.checked })
@@ -616,7 +619,7 @@ export default function Admin({
                     <>
                       <div className="section-heading">
                         <h2>Editor materi</h2>
-                        <button
+                        {!curriculum && <button
                           className="secondary"
                           disabled={dirty}
                           title={
@@ -626,7 +629,7 @@ export default function Admin({
                         >
                           <Eye size={16} />
                           Lihat sebagai peserta
-                        </button>
+                        </button>}
                       </div>
                       <div className="form-grid">
                         <Field label="Judul materi">
@@ -816,10 +819,10 @@ export default function Admin({
                           </button>
                         ))}
                       </div>
-                      {editing.version > 0 && <CourseFileLibrary key={editing.id} courseId={editing.id} usedIds={editing.lessons.flatMap(item => item.blocks.map(block => mediaId(block.content)).filter((id): id is string => !!id))} disabled={busy} onChoose={(file) => patchLesson({blocks:[...lesson.blocks,{id:uid(),type:file.mime.startsWith("image/") ? "image" : "file",content:file.url,caption:file.name}]})} />}
+                      {editing.version > 0 && <CourseFileLibrary allowRemoval={!curriculum} key={editing.id} courseId={editing.id} usedIds={editing.lessons.flatMap(item => item.blocks.map(block => mediaId(block.content)).filter((id): id is string => !!id))} disabled={busy} onChoose={(file) => patchLesson({blocks:[...lesson.blocks,{id:uid(),type:file.mime.startsWith("image/") ? "image" : "file",content:file.url,caption:file.name}]})} />}
                       <QuizEditor lesson={lesson} patch={patchLesson} />
                       <ExerciseEditor lesson={lesson} patch={patchLesson} />
-                      <details className="course-settings">
+                      {!curriculum && <details className="course-settings">
                         <summary>
                           <MessageCircle size={17} />
                           Diskusi peserta pada materi ini
@@ -832,7 +835,7 @@ export default function Admin({
                         ) : (
                           <p>Simpan perubahan untuk membuka diskusi.</p>
                         )}
-                      </details>
+                      </details>}
                       <div className="save-bar">
                         <span>
                           {dirty

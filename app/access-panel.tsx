@@ -82,6 +82,7 @@ export default function Access() {
       </header>
       <main className="access-main" id="access-main">
         <EmailStatus />
+        {owner && <p><a className="secondary button-link" href="/curriculum">Kelola Tim Kurikulum →</a></p>}
         <div className="access-heading">
           <div>
             <div className="eyebrow teal">AKUN & PERIZINAN</div>
@@ -181,7 +182,7 @@ export default function Access() {
                         ? "Super Admin"
                         : u.role === "tutor" || u.mentorClasses
                           ? `Tutor · ${u.mentorClasses} kelas ditugaskan`
-                          : "Siswa"}
+                          : u.role === "curriculum" ? "Tim Kurikulum" : "Siswa"}
                     </p>
                     <span className={"access-status " + u.status}>
                       {labels[u.status]}

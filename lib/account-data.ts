@@ -1,3 +1,4 @@
+import { curriculumEnabled } from "./curriculum-access.ts";
 import { photoInfo } from "./media-data.ts";
 import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { publishedSql } from "./database-sql.ts";
@@ -28,6 +29,7 @@ export async function accountData(d: PlatformDatabase, u: ClassUser) {
     sessions,
     projects: await dashboardProjects(d, u),
     teaching: await tutorDashboard(d, u),
+    curriculum: await curriculumEnabled(d,u),
   };
 }
 export async function enrollCourse(d: PlatformDatabase, u: ClassUser, id: string) {

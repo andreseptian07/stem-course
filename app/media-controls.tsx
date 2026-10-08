@@ -97,8 +97,9 @@ type LibraryFile = MediaInfo & {
   bound: number;
   ready: number;
 };
-export function CourseFileLibrary({ courseId, usedIds, disabled, onChoose }: {
+export function CourseFileLibrary({ courseId, usedIds, disabled, onChoose, allowRemoval = true }: {
   courseId: string;
+  allowRemoval?: boolean;
   usedIds: string[];
   disabled: boolean;
   onChoose: (file: MediaInfo) => void;
@@ -131,5 +132,5 @@ export function CourseFileLibrary({ courseId, usedIds, disabled, onChoose }: {
   finally {
     setBusy(false);
   } }
-  return <details className="course-file-library"><summary>Berkas course · gunakan kembali atau hapus upload yang belum dipakai</summary><button type="button" className="secondary" disabled={disabled || busy} onClick={() => void load().catch(e => setError(e.message))}>Muat ulang berkas</button>{error && <p role="alert">{error}</p>}{!files.length && <p>Belum ada berkas di penyimpanan ini.</p>}<ul>{files.map(file => <li key={file.id}><span>{file.name} · {Math.ceil(file.size / 1024)} KB{!file.ready ? " · Upload belum selesai" : ""}</span>{!!file.ready && <button type="button" className="secondary" disabled={disabled || busy} onClick={() => onChoose(file)}>Tambahkan ke materi</button>}{!file.bound && !usedIds.includes(file.id) && <button type="button" className="secondary" disabled={disabled || busy} onClick={() => void erase(file.id)}>Hapus upload belum dipakai</button>}{!!file.bound && <small>Disimpan sebagai berkas yang pernah digunakan.</small>}</li>)}</ul></details>;
+  return <details className="course-file-library"><summary>Berkas course · gunakan kembali{allowRemoval ? " atau hapus upload yang belum dipakai" : " dalam draf"}</summary><button type="button" className="secondary" disabled={disabled || busy} onClick={() => void load().catch(e => setError(e.message))}>Muat ulang berkas</button>{error && <p role="alert">{error}</p>}{!files.length && <p>Belum ada berkas di penyimpanan ini.</p>}<ul>{files.map(file => <li key={file.id}><span>{file.name} · {Math.ceil(file.size / 1024)} KB{!file.ready ? " · Upload belum selesai" : ""}</span>{!!file.ready && <button type="button" className="secondary" disabled={disabled || busy} onClick={() => onChoose(file)}>Tambahkan ke materi</button>}{allowRemoval && !file.bound && !usedIds.includes(file.id) && <button type="button" className="secondary" disabled={disabled || busy} onClick={() => void erase(file.id)}>Hapus upload belum dipakai</button>}{!!file.bound && <small>Disimpan sebagai berkas yang pernah digunakan.</small>}</li>)}</ul></details>;
 }
