@@ -33,6 +33,7 @@ export function mariaDbOptions(env: Environment): PoolOptions {
       throw new MariaDbSetupError("DB_SSL_CA_BASE64 tidak berisi sertifikat CA PEM.");
     if (mode === "disabled") throw new MariaDbSetupError("Sertifikat CA memerlukan DB_SSL_MODE=required.");
   }
+  const connectionLimit = integer(env, "DB_POOL_LIMIT", 3, 20);
   return {
     host: required(env, "DB_HOST"),
     port: integer(env, "DB_PORT", 3306, 65535),
@@ -40,7 +41,11 @@ export function mariaDbOptions(env: Environment): PoolOptions {
     database: required(env, "DB_NAME"),
     // Do not trim passwords: spaces and special characters may be intentional.
     password: required(env, "DB_PASSWORD", true),
-    connectionLimit: integer(env, "DB_POOL_LIMIT", 3, 20),
+    connectionLimit,
+    // mysql2 only starts idle cleanup when maxIdle < connectionLimit.
+    // Hosting currently closes idle sessions after 20 seconds.
+    maxIdle: connectionLimit - 1,
+    idleTimeout: integer(env, "DB_POOL_IDLE_MS", 10000, 300000),
     waitForConnections: true,
     queueLimit: 30,
     connectTimeout: 10000,
@@ -51,6 +56,7 @@ export function mariaDbOptions(env: Environment): PoolOptions {
     // A no-op duplicate insertion must report zero, as it does on D1.
     flags: ["-FOUND_ROWS"],
     enableKeepAlive: true,
+    keepAliveInitialDelay: 0,
     ...(mode === "required"
       ? { ssl: { rejectUnauthorized: true, verifyIdentity: true, ...(ca ? { ca } : {}) } }
       : {}),

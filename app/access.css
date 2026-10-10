@@ -166,3 +166,4 @@
 .danger-button { background:#fff1ee; color:#923d34; border:1px solid #ecc9c4; min-height:44px; }
 .danger-button:hover:not(:disabled) { background:#f9e4df; }
 .access-dialog p { font-size:14px; }
+.access-actions > a.primary { color:#fff; background:#096b64; }

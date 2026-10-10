@@ -7,6 +7,8 @@ const labels = {
   submitted: "Menunggu review",
   changes_requested: "Perlu revisi",
   accepted: "Diterima",
+  stale: "Instruksi berubah — kerjakan ulang",
+  configuration_required: "Aturan tugas sedang disiapkan",
 };
 const date = (s: string) =>
   new Intl.DateTimeFormat("id-ID", {

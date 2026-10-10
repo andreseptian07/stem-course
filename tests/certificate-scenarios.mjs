@@ -1,3 +1,5 @@
+import {seedPrincipal} from "./authorization-fixture.mjs";
+import {databaseSql} from "../lib/database.ts";
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {PDFDocument} from 'pdf-lib';
@@ -14,22 +16,25 @@ export async function certificateScenarios(t,d){
   await d.prepare('INSERT INTO users(id,name,role) VALUES(?,?,?)').bind(u.id,u.name,u.role).run();
   await d.prepare("INSERT INTO user_access(user_id,status,created_at,updated_at) VALUES(?,'active',?,?)").bind(u.id,now,now).run();
  }
- let c=await saveCourse(d,owner,{id:prefix,version:0,title:'Dasar Sensor dan Pengukuran',description:'Fixture sementara',category:'STEM',level:'Pemula',published:true,sample:false,certificateEnabled:true,lessons:[{id:'first',revision:1,module:'Dasar',title:'Pengukuran',minutes:10,blocks:[],quiz:{mode:'required',threshold:80,maxAttempts:0,feedback:'never',questions:[{id:'q',prompt:'Pilih',options:['A','B'],correct:[0],explanation:''}]}},{id:'second',revision:1,module:'Dasar',title:'Kode',minutes:10,blocks:[],exercise:{language:'python',prompt:'Kode',starter:'',required:true,maxAttempts:0,tests:[{input:'',expected:'1',hidden:true}]}}]});
+ await d.prepare(databaseSql(d,"INSERT INTO settings(key,value) VALUES('owner',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value","INSERT INTO settings(`key`,value) VALUES('owner',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")).bind(owner.id).run();
+ for(const u of [owner,alice,bob])await seedPrincipal(d,u.id,u===owner?'staff':'student');
+ let c=await saveCourse(d,owner,{id:prefix,version:0,title:'Dasar Sensor dan Pengukuran',description:'Fixture sementara',category:'STEM',level:'Pemula',published:true,sample:false,certificateEnabled:true,graduationPolicyVersion:2,learningMode:"class_required",policyState:"ready",lessons:[{id:'first',revision:1,module:'Dasar',title:'Pengukuran',minutes:10,blocks:[],quiz:{mode:'required',threshold:80,maxAttempts:0,feedback:'never',questions:[{id:'q',prompt:'Pilih',options:['A','B'],correct:[0],explanation:''}]}},{id:'second',revision:1,reviewRequirements:[{id:'r1',revision:1,title:'Praktik sensor',instructions:'Ukur sensor.',rubric:'Ketepatan pengukuran.'}],module:'Dasar',title:'Kode',minutes:10,blocks:[],exercise:{language:'python',prompt:'Kode',starter:'',required:true,maxAttempts:0,tests:[{input:'',expected:'1',hidden:true}]}}]});
+ for(const u of [alice,bob])await d.prepare("INSERT INTO enrollments(user_id,course_id,created_at,authorization_id) VALUES(?,?,?,'fixture')").bind(u.id,c.id,now).run();
  for(const id of [classId,emptyClass]){
   await d.prepare("INSERT INTO cohorts(id,course_id,mentor_id,name,description,capacity,status,version,created_at) VALUES(?,?,?,'Kelas Uji','',10,'active',1,?)").bind(id,c.id,owner.id,now).run();
   await d.prepare("INSERT INTO cohort_members(class_id,user_id,status,created_at) VALUES(?,?,'approved',?)").bind(id,alice.id,now).run();
  }
- let assignment={id:prefix+'-task',classId,version:0,title:'Praktik sensor',instructions:'Ukur sensor.',dueAt:null,status:'published'};
+ let assignment={id:prefix+'-task',classId,version:0,title:'Praktik sensor',instructions:'Ukur sensor.',rubric:'Ketepatan pengukuran.',requirementId:'r1',dueAt:null,status:'published'};
  await saveAssignment(d,owner,assignment);assignment.version=1;
  let cert;
  await t.test('certificate requires consent, every current lesson, required tests and an approved class',async()=>{
   await assert.rejects(issueCertificate(d,alice,c.id,classId,false),status(400));
   await assert.rejects(issueCertificate(d,alice,c.id,classId,true),status(403));
-  for(const l of c.lessons){await initializeProgress(d,alice.id,c.id,l.id,l.revision);await d.prepare('UPDATE progress SET complete=1 WHERE user_id=? AND course_id=? AND lesson_id=?').bind(alice.id,c.id,l.id).run();}
+  for(const l of c.lessons){await initializeProgress(d,alice.id,c.id,l.id,l.revision);await d.prepare('UPDATE learning_progress_revisions SET complete=1 WHERE user_id=? AND course_id=? AND lesson_id=?').bind(alice.id,c.id,l.id).run();}
   await assert.rejects(issueCertificate(d,alice,c.id,classId,true),status(403));
-  await d.prepare('UPDATE progress SET quiz_passed=1,code_passed=1 WHERE user_id=? AND course_id=?').bind(alice.id,c.id).run();
+  await d.prepare('UPDATE learning_progress_revisions SET quiz_passed=1,code_passed=1 WHERE user_id=? AND course_id=?').bind(alice.id,c.id).run();
   await assert.rejects(issueCertificate(d,alice,c.id,emptyClass,true),status(403));
-  await assert.rejects(issueCertificate(d,bob,c.id,classId,true),status(403));
+  await assert.rejects(issueCertificate(d,bob,c.id,classId,true),status(404));
   await assert.rejects(issueCertificate(d,alice,c.id,classId,true),status(403));
   const state=await certificateStatus(d,alice,c.id);assert.equal(state.classes.find(c=>c.id===classId).eligible,false);assert.equal(state.lessons.every(l=>l.complete&&l.quizPassed&&l.codePassed),true);
  });
@@ -42,27 +47,31 @@ export async function certificateScenarios(t,d){
   const first=await d.prepare('SELECT version FROM project_submissions WHERE id=?').bind(submissionId).first();
   const secondId=prefix+'-second';await submitProject(d,alice,{action:'submit',id:secondId,assignmentId:assignment.id,assignmentVersion:1,previousId:submissionId,previousVersion:first.version,body:'Hasil perbaikan',url:''});submissionId=secondId;
   await reviewProject(d,owner,{action:'review',submissionId,version:1,status:'accepted',feedback:'Diterima.',score:95});
-  const draft={...assignment,id:prefix+'-draft',version:0,status:'draft'};await saveAssignment(d,owner,draft);
+  const draft={...assignment,id:prefix+'-draft',version:0,requirementId:null,status:'draft'};await saveAssignment(d,owner,draft);
   assignment={...assignment,status:'closed'};await saveAssignment(d,owner,assignment);assignment.version=2;
   assert.equal((await certificateStatus(d,alice,c.id)).classes.find(c=>c.id===classId).eligible,true);
   await saveAssignment(d,owner,{...assignment,instructions:'Instruksi diubah.'});assignment={...assignment,version:3,instructions:'Instruksi diubah.'};
   await assert.rejects(issueCertificate(d,alice,c.id,classId,true),status(403));
-  await saveAssignment(d,owner,{...assignment,instructions:'Ukur sensor.'});assignment={...assignment,version:4,instructions:'Ukur sensor.'};
+  await saveAssignment(d,owner,{...assignment,instructions:'Ukur sensor.',status:'published'});assignment={...assignment,version:4,instructions:'Ukur sensor.',status:'published'};
+  // Restoring text is still a new assessment revision; the historical acceptance must not reappear.
+  const thirdId=prefix+'-third';await submitProject(d,alice,{action:'submit',id:thirdId,assignmentId:assignment.id,assignmentVersion:4,previousId:submissionId,previousVersion:2,body:'Pengerjaan instruksi terbaru',url:''});submissionId=thirdId;
+  await reviewProject(d,owner,{action:'review',submissionId,version:1,status:'accepted',feedback:'Diterima revisi terbaru.',score:95});
+  await saveAssignment(d,owner,{...assignment,status:'closed'});assignment={...assignment,status:'closed',version:5};
  });
  await t.test('issuance rechecks races on task set, membership, progress and course version',async()=>{
   for(const mutation of [
     ()=>d.prepare("UPDATE cohort_members SET status='removed' WHERE class_id=? AND user_id=?").bind(classId,alice.id).run(),
-    ()=>d.prepare('UPDATE progress SET complete=0 WHERE user_id=? AND course_id=?').bind(alice.id,c.id).run(),
+    ()=>d.prepare('UPDATE learning_progress_revisions SET complete=0 WHERE user_id=? AND course_id=?').bind(alice.id,c.id).run(),
     ()=>d.prepare('UPDATE courses SET version=version+1 WHERE id=?').bind(c.id).run(),
-    ()=>d.prepare("UPDATE class_assignments SET status='published' WHERE id=?").bind(prefix+'-draft').run(),
+    ()=>d.prepare("UPDATE class_assignments SET status='draft' WHERE id=?").bind(assignment.id).run(),
   ]) {
     let changed=false;
     const raced={...d,prepare(sql){const stmt=d.prepare(sql);if(!sql.includes('INTO certificates('))return stmt;return {bind(...args){const bound=stmt.bind(...args);return {async run(){if(!changed){changed=true;await mutation();}return bound.run();}};}};}};
     await assert.rejects(issueCertificate(raced,alice,c.id,classId,true),status(409));
     await d.prepare("UPDATE cohort_members SET status='approved' WHERE class_id=? AND user_id=?").bind(classId,alice.id).run();
-    await d.prepare('UPDATE progress SET complete=1 WHERE user_id=? AND course_id=?').bind(alice.id,c.id).run();
+    await d.prepare('UPDATE learning_progress_revisions SET complete=1 WHERE user_id=? AND course_id=?').bind(alice.id,c.id).run();
     await d.prepare('UPDATE courses SET version=? WHERE id=?').bind(c.version,c.id).run();
-    await d.prepare("UPDATE class_assignments SET status='draft' WHERE id=?").bind(prefix+'-draft').run();
+    await d.prepare("UPDATE class_assignments SET status='closed' WHERE id=?").bind(assignment.id).run();
   }
   assert.equal((await listCertificates(d,alice)).length,0);
  });
@@ -73,8 +82,8 @@ export async function certificateScenarios(t,d){
   const publicData=await verifyCertificate(d,cert.number);assert.equal(publicData.status,'valid');assert.equal(publicData.recipientName,alice.name);
   assert.deepEqual(Object.keys(publicData).sort(),['number','status','recipientName','courseTitle','courseVersion','issuedAt'].sort());
   assert.equal(await verifyCertificate(d,'RS-invalid'),null);
-  const evidence=JSON.parse((await d.prepare('SELECT evidence FROM certificates WHERE number=?').bind(cert.number).first()).evidence);assert.equal(evidence.tasks[0].submissionId,submissionId);assert.equal(evidence.lessons.length,2);
-  c=await saveCourse(d,owner,{...c,title:'Course versi baru',lessons:c.lessons.map(l=>({...l,title:l.title+' revisi'}))});
+  const evidence=JSON.parse((await d.prepare('SELECT evidence FROM certificates WHERE number=?').bind(cert.number).first()).evidence);assert.equal(evidence.reviews[0].submissionId,submissionId);assert.equal(evidence.lessons.length,2);
+  c=await saveCourse(d,owner,{...c,title:'Course versi baru',lessons:c.lessons.map(l=>({...l,blocks:[...l.blocks,{id:'changed-'+l.id,type:'text',content:'Instruksi substansial untuk materi terbaru.'}]}))});
   await d.prepare('UPDATE users SET name=? WHERE id=?').bind('Nama berubah',alice.id).run();
   assert.equal((await ownedCertificate(d,alice,cert.number)).courseTitle,'Dasar Sensor dan Pengukuran');assert.equal((await ownedCertificate(d,alice,cert.number)).recipientName,'Ayu Éléonore');
   assert.equal((await certificateStatus(d,alice,c.id)).classes.find(c=>c.id===classId).eligible,false);
@@ -89,7 +98,7 @@ export async function certificateScenarios(t,d){
  });
  await t.test('revocation requires active Super Admin, hides public personal fields and prevents regeneration',async()=>{
   await assert.rejects(revokeCertificate(d,alice,cert.number,'Private reason'),status(403));
-  await assert.rejects(revokeCertificate(d,{...bob,role:'owner'},cert.number,'Spoof'),status(409));
+  await assert.rejects(revokeCertificate(d,{...bob,role:'owner'},cert.number,'Spoof'),status(403));
   await revokeCertificate(d,owner,cert.number,'Alasan privat audit');
   await assert.rejects(ownedCertificate(d,alice,cert.number),status(410));await assert.rejects(issueCertificate(d,alice,c.id,classId,true),status(409));
   const revoked=await verifyCertificate(d,cert.number);assert.equal(revoked.status,'revoked');assert.equal(JSON.stringify(revoked).includes(alice.name),false);assert.equal(JSON.stringify(revoked).includes('Alasan privat'),false);

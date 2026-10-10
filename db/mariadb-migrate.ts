@@ -40,6 +40,12 @@ export async function applyMariaDbMigrations(pool: Pool) {
     if (!applied.length && tables.some((t) => t.name !== journalTable))
       throw new MariaDbSetupError("Database belum memiliki riwayat STEM tetapi sudah berisi tabel. Migrasi dihentikan untuk melindungi data; gunakan database kosong atau tinjau tabel yang sudah ada.");
 
+    // Do this before any Stage 4 DDL: adding a unique key must not silently discard legacy attempts.
+    if(tables.some(t=>t.name==="project_submissions")&&migrations.some(m=>m.sql.some(sql=>sql.includes("academic_submission_attempt"))&&!applied.some(a=>Number(a.created_at)===m.folderMillis))){
+      const [duplicates]=await connection.query<RowDataPacket[]>("SELECT assignment_id,student_id,attempt,count(*) AS count FROM project_submissions GROUP BY assignment_id,student_id,attempt HAVING count(*)>1 LIMIT 1");
+      if(duplicates.length)throw new MariaDbSetupError("Duplikasi percobaan tugas ditemukan. Jalankan inventaris baca saja dan rekonsiliasi sebelum migrasi; tidak ada baris dihapus.");
+    }
+
     // DDL in MariaDB implicitly commits. A failed schema change may leave tables;
     // preflight above refuses to silently rerun a partially installed foundation.
     await migrate(drizzle(connection), { migrationsFolder, migrationsTable: journalTable });

@@ -1,0 +1,1 @@
+ALTER TABLE `cohorts` ADD `assignment_proof` text DEFAULT '' NOT NULL;

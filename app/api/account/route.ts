@@ -1,4 +1,5 @@
 import { requireVerifiedEmail } from "@/lib/email-policy";
+import { databaseFailureMessage } from "@/lib/database-failure";
 import { readRequestText } from "@/lib/request-body";
 import { checkAuthOrigin } from "@/lib/auth-policy";
 import { ClassError } from "@/lib/classes";
@@ -13,12 +14,12 @@ function failure(e: unknown) {
     return json({ error: e.issues[0]?.message || "Isian belum valid." }, 400);
   console.error(
     "Account request failed",
-    e instanceof Error ? e.message : "unknown",
+    e instanceof Error ? e.name : "unknown",
   );
   return json(
     {
       error:
-        "Data akun belum dapat diproses. Coba lagi; perubahan Anda tetap tersedia.",
+        databaseFailureMessage(e, "Data akun belum dapat diproses. Coba lagi; perubahan Anda tetap tersedia."),
     },
     503,
   );
@@ -41,12 +42,13 @@ export async function POST(req: Request) {
       throw new AppError(413, "Isian terlalu besar.");
     const raw = await readRequestText(req, 15000);
     if (raw.length > 15000) throw new AppError(413, "Isian terlalu besar.");
-    let b: any;
+    let data: unknown;
     try {
-      b = JSON.parse(raw);
+      data = JSON.parse(raw);
     } catch {
       throw new AppError(400, "JSON tidak valid.");
     }
+    const b = z.discriminatedUnion("action",[z.object({action:z.literal("enroll"),courseId:z.string().min(1).max(80)}).strict(),z.object({action:z.literal("saveProfile"),profile:z.unknown()}).strict()]).parse(data);
     const u = await identity(true);
     await requireVerifiedEmail(db(), u.id);
     if (b.action === "enroll") {

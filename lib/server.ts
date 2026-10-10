@@ -2,38 +2,21 @@ import { runtimeDatabase } from "../db/runtime.ts";
 import { requireVerifiedEmail } from "./email-policy";
 import { getSignedUser } from "./auth.ts";
 import { sampleCourse } from "./seed";
-import { seedCourse, readCourse, readProgress, accessibleLesson, initializeProgress } from "./course-data.ts";
+import { seedCourse, readLearningCourse, readProgress, accessibleLesson, initializeProgress } from "./course-data.ts";
 import type { PlatformDatabase } from "./database.ts";
-import { validateConfig } from "./judge";
+import {configuredJudge} from "./judge-config";
 import type { JudgeConfig } from "./judge";
 import {
   AccessError as AppError,
   registerIdentity,
   requireActive,
+  requireOwner,
 } from "./access";
 export { AccessError as AppError } from "./access";
 export function db(): PlatformDatabase { return runtimeDatabase(); }
 export function config() { return process.env as Record<string, string>; }
 export function judgeConfig(): JudgeConfig | null {
-  const e = config();
-  if (e.JUDGE0_ENABLED !== "true" || !e.JUDGE0_URL) return null;
-  const cfg = {
-    url: e.JUDGE0_URL,
-    token: e.JUDGE0_TOKEN,
-    apiKey: e.JUDGE0_API_KEY,
-    apiHost: e.JUDGE0_API_HOST,
-    languageIds: {
-      python: Number(e.JUDGE0_PYTHON_ID || 71),
-      javascript: Number(e.JUDGE0_JAVASCRIPT_ID || 63),
-      cpp: Number(e.JUDGE0_CPP_ID || 54),
-    },
-  };
-  try {
-    validateConfig(cfg);
-    return cfg;
-  } catch {
-    return null;
-  }
+  return configuredJudge(config());
 }
 export async function identity(allowRestricted = false) {
   const signed = await getSignedUser();
@@ -46,21 +29,21 @@ export async function identity(allowRestricted = false) {
     false,
   );
   if (!allowRestricted) { await requireVerifiedEmail(d, signed.userId); requireActive(u); }
-  if (u.role === "owner") await seedCourse(d, sampleCourse);
+  if (u.owner && u.kind === "staff") { await requireOwner(d,u); await seedCourse(d,sampleCourse); }
   return u;
 }
 export function owner(user: { role: string }) {
   if (user.role !== "owner")
     throw new AppError(403, "Halaman ini hanya untuk pengelola course.");
 }
-export async function course(id: string, user: { role: string }) {
-  return readCourse(db(), id, user);
+export async function course(id: string, user: { id: string; role: string }) {
+  return readLearningCourse(db(), id, user);
 }
 export async function getProgress(userId: string, courseId: string) {
   return readProgress(db(), userId, courseId);
 }
-export async function accessible(user: { id: string; role: string }, courseId: string, lessonId: string) {
-  return accessibleLesson(db(), user, courseId, lessonId);
+export async function accessible(user: { id: string; role: string }, courseId: string, lessonId: string,classId?:string|null) {
+  return accessibleLesson(db(), user, courseId, lessonId,classId);
 }
 export async function ensureProgress(userId: string, courseId: string, lessonId: string, revision: number) {
   return initializeProgress(db(), userId, courseId, lessonId, revision);

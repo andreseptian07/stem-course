@@ -1,0 +1,1 @@
+ALTER TABLE `cohort_members` ADD `authorization_version` int DEFAULT 1 NOT NULL;

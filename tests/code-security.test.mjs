@@ -1,3 +1,4 @@
+import {seedSqlitePrincipal} from "./authorization-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -62,6 +63,8 @@ function database() {
       }
     },
   };
+  sql.prepare("INSERT INTO courses(id,data,version) VALUES(?, ?,1)").run("course",JSON.stringify({id:"course",published:true,graduationPolicyVersion:2,learningMode:"independent_allowed",policyState:"ready",lessons:[lesson]}));
+  for(const id of ["student","other"]){sql.prepare("INSERT INTO users(id,name,role) VALUES(?,?,'student')").run(id,id);sql.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'active',1,'2026','2026')").run(id);seedSqlitePrincipal(sql,id,"student");sql.prepare("INSERT INTO enrollments(user_id,course_id,created_at,authorization_id) VALUES(?,'course','2026',?)").run(id,"fixture:"+id);}
   return { d, sql };
 }
 const lesson = {
@@ -79,7 +82,7 @@ const lesson = {
 function initialize(sql, user = "student") {
   sql
     .prepare(
-      "INSERT INTO progress(user_id,course_id,lesson_id,revision) VALUES(?,?,?,1)",
+      "INSERT INTO learning_progress_revisions(user_id,course_id,lesson_id,revision) VALUES(?,?,?,1)",
     )
     .run(user, "course", "lab");
 }
@@ -214,7 +217,7 @@ test("database enforces active submission, idempotency, quota, hidden output and
   assert.equal(result.stale, true);
   assert.equal(result.passed, true);
   assert.equal(
-    sql.prepare("SELECT code_passed FROM progress").get().code_passed,
+    sql.prepare("SELECT code_passed FROM learning_progress_revisions").get().code_passed,
     0,
   );
   assert.equal(JSON.stringify(result).includes("secret"), false);
@@ -232,7 +235,7 @@ test("database enforces active submission, idempotency, quota, hidden output and
   a = sql.prepare("SELECT * FROM attempts WHERE id=?").get(id2);
   await readAttempt(d, cfg, "student", a, 1, fetcher);
   assert.equal(
-    sql.prepare("SELECT code_passed FROM progress").get().code_passed,
+    sql.prepare("SELECT code_passed FROM learning_progress_revisions").get().code_passed,
     1,
   );
   const id3 = crypto.randomUUID();
@@ -249,7 +252,7 @@ test("database enforces active submission, idempotency, quota, hidden output and
   await releaseAttempt(d, id3, "student");
   await releaseAttempt(d, id3, "student");
   assert.equal(
-    sql.prepare("SELECT code_attempts FROM progress").get().code_attempts,
+    sql.prepare("SELECT code_attempts FROM learning_progress_revisions").get().code_attempts,
     2,
   );
 });
@@ -270,7 +273,7 @@ test("service failure and expiration refund once, wrong answers consume quota, p
     ),
   );
   assert.equal(
-    sql.prepare("SELECT code_attempts FROM progress").get().code_attempts,
+    sql.prepare("SELECT code_attempts FROM learning_progress_revisions").get().code_attempts,
     0,
   );
   const id2 = crypto.randomUUID();
@@ -308,11 +311,11 @@ test("service failure and expiration refund once, wrong answers consume quota, p
     }),
   );
   assert.equal(
-    sql.prepare("SELECT code_attempts FROM progress").get().code_attempts,
+    sql.prepare("SELECT code_attempts FROM learning_progress_revisions").get().code_attempts,
     1,
   );
   assert.equal(
-    sql.prepare("SELECT code_passed FROM progress").get().code_passed,
+    sql.prepare("SELECT code_passed FROM learning_progress_revisions").get().code_passed,
     0,
   );
   const id3 = crypto.randomUUID();
@@ -331,7 +334,7 @@ test("service failure and expiration refund once, wrong answers consume quota, p
   await readAttempt(d, cfg, "student", a, 1);
   await readAttempt(d, cfg, "student", a, 1);
   assert.equal(
-    sql.prepare("SELECT code_attempts FROM progress").get().code_attempts,
+    sql.prepare("SELECT code_attempts FROM learning_progress_revisions").get().code_attempts,
     1,
   );
 });

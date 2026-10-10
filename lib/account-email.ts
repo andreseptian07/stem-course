@@ -6,7 +6,7 @@ import { authRateLimit, registrationSchema } from "./auth-data.ts";
 import { hashPassword, validatePassword } from "./auth-password.ts";
 
 export type EmailPurpose = "verify" | "reset";
-export type AccountMail = { to: string; purpose: EmailPurpose | "changed" | "test"; url?: string };
+export type AccountMail = { to: string; purpose: EmailPurpose | "changed" | "test" | "staffInvite"; staffRole?: "Tutor" | "Tim Kurikulum"; url?: string };
 export type DeliverMail = (message: AccountMail) => Promise<void>;
 const digest = (token: string) => createHash("sha256").update(token).digest("hex");
 export const emailToken = z.string().regex(/^[A-Za-z0-9_-]{43}$/);

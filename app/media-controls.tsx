@@ -69,7 +69,7 @@ export function PhotoControl({ photo, onChange, disabled, onBusy, onError, onNot
 }
 export function CourseUpload({ courseId, type, onUploaded, onBusy, disabled }: {
   courseId: string | null;
-  type: "image" | "file";
+  type: "image" | "video" | "file";
   onUploaded: (file: MediaInfo) => void;
   onBusy: (value: boolean) => void;
   disabled: boolean;
@@ -90,7 +90,7 @@ export function CourseUpload({ courseId, type, onUploaded, onBusy, disabled }: {
       onBusy(false);
     }
   }
-  return <div className="course-upload"><label>Unggah {type === "image" ? "gambar" : "dokumen"}<input type="file" accept={type === "image" ? ".png,.jpg,.jpeg" : ".pdf,.txt"} disabled={disabled || !courseId} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file)
+  return <div className="course-upload"><label>Unggah {type === "image" ? "gambar" : type === "video" ? "video MP4" : "dokumen"}<input type="file" accept={type === "image" ? ".png,.jpg,.jpeg" : type === "video" ? ".mp4" : ".pdf,.txt"} disabled={disabled || !courseId} onChange={e => { const file = e.target.files?.[0]; e.target.value = ""; if (file)
     void change(file); }}/></label><small>{courseId ? "Maksimal 5 MB. Setelah upload, simpan course untuk memasang berkas pada materi." : "Simpan course terlebih dahulu untuk mengaktifkan upload."}</small>{error && <p role="alert">{error}</p>}</div>;
 }
 type LibraryFile = MediaInfo & {

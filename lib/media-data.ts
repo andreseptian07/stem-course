@@ -1,3 +1,6 @@
+import {inspectCourseMedia} from "./course-media-format.ts";
+import {loadGraduationContext,academicProofPredicate} from "./graduation-data.ts";
+import {requirePermission,authorizationGuard} from "./authorization.ts";
 import { hasCurriculumAccess } from "./curriculum-access.ts";
 import { createHash, randomUUID } from "node:crypto";
 import { writeFile, unlink, open } from "node:fs/promises";
@@ -8,8 +11,7 @@ import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { ClassError, type ClassUser } from "./classes.ts";
 import { fileStorage, privateDirectory, inspectFile, FILE_LIMIT, type FileEnvironment } from "./project-files.ts";
 import { mediaId, mediaUrl, type MediaInfo } from "./media-model.ts";
-import { readCourse, readProgress } from "./course-data.ts";
-import { blockingLesson } from "./rules.ts";
+import { readLearningCourse, readCourse } from "./course-data.ts";
 import type { Course } from "./model";
 export const PHOTO_LIMIT = 2 * 1024 * 1024;
 export type MediaTarget = {
@@ -45,6 +47,10 @@ export async function photoInfo(d: PlatformDatabase, userId: string, env: FileEn
   }>();
   return f ? info(f) : null;
 }
+export async function ownPhoto(d:PlatformDatabase,u:ClassUser,env:FileEnvironment=process.env){
+  const guard=await authorizationGuard(d,u,'account'),photo=await photoInfo(d,u.id,env);
+  if(!await d.prepare(`SELECT 1 WHERE ${guard.sql}`).bind(...guard.binds).first())throw new ClassError(403,'Hak akun berubah. Muat ulang foto profil.');return photo;
+}
 export async function normalizeImage(name: string, bytes: Uint8Array, avatar: boolean) {
   const meta = inspectFile(name, bytes);
   if (!meta.mime.startsWith("image/"))
@@ -65,12 +71,12 @@ export async function normalizeImage(name: string, bytes: Uint8Array, avatar: bo
     throw new ClassError(415, "Gambar tidak dapat dibaca. Gunakan PNG/JPEG yang valid dengan maksimal 16 juta piksel.");
   }
 }
-export async function canUploadMedia(d: PlatformDatabase, u: ClassUser, target: MediaTarget) {
-  if (target.purpose === "course") {
-    if(u.role!=="owner" && !await hasCurriculumAccess(d,u,target.courseId))
-      throw new ClassError(403,"Anda belum ditugaskan ke Tim Kurikulum course ini.");
-    if (!await d.prepare("SELECT id FROM courses WHERE id=?").bind(target.courseId).first())
-      throw new ClassError(409, "Simpan course terlebih dahulu sebelum mengunggah berkas.");
+export async function canUploadMedia(d:PlatformDatabase,u:ClassUser,target:MediaTarget){
+  await requirePermission(d,u,'account');
+  if(target.purpose==='course'){
+    await requirePermission(d,u,'curriculum');
+    await requirePermission(d,u,'curriculum',target.courseId);
+    if(!await d.prepare('SELECT id FROM courses WHERE id=?').bind(target.courseId).first())throw new ClassError(409,'Simpan course terlebih dahulu sebelum mengunggah berkas.');
   }
 }
 async function eraseBytes(id: string, env: FileEnvironment) {
@@ -80,8 +86,9 @@ async function eraseBytes(id: string, env: FileEnvironment) {
     throw e; });
 }
 export async function uploadMedia(d: PlatformDatabase, u: ClassUser, target: MediaTarget, name: string, raw: Uint8Array, env: FileEnvironment = process.env) {
-  await canUploadMedia(d, u, target);
-  let bytes = raw, meta = inspectFile(name, bytes);
+  await canUploadMedia(d,u,target);
+  const guard=await authorizationGuard(d,u,target.purpose==="avatar"?"account":"curriculum",target.purpose==="course"?target.courseId:undefined);
+  let bytes = raw, meta = target.purpose === "course" ? inspectCourseMedia(name, bytes) : inspectFile(name, bytes);
   if (target.purpose === "avatar" || meta.mime.startsWith("image/")) {
     const image = await normalizeImage(name, bytes, target.purpose === "avatar");
     bytes = image.bytes;
@@ -91,24 +98,24 @@ export async function uploadMedia(d: PlatformDatabase, u: ClassUser, target: Med
     await cleanUnusedPhotos(d, u.id, env);
   const { scope } = fileStorage(env), id = randomUUID(), courseId = target.purpose === "course" ? target.courseId : null;
   const dir = await privateDirectory(env);
-  const r = await d.prepare(`INSERT INTO media_files(id,owner_id,course_id,purpose,scope,name,mime,size,ready,bound,created_at) SELECT ?,?,?,?,?,?,?,?,0,0,? WHERE (SELECT count(*) FROM media_files WHERE scope=? AND owner_id=? AND purpose=? ${courseId ? "AND course_id=?" : ""})<? AND (SELECT COALESCE(sum(size),0) FROM media_files WHERE scope=? AND owner_id=? AND purpose=? ${courseId ? "AND course_id=?" : ""})+?<=?`).bind(id, u.id, courseId, target.purpose, scope, meta.name, meta.mime, meta.size, new Date().toISOString(), scope, u.id, target.purpose, ...(courseId ? [courseId] : []), target.purpose === "avatar" ? 5 : 100, scope, u.id, target.purpose, ...(courseId ? [courseId] : []), meta.size, target.purpose === "avatar" ? 10 * 1024 * 1024 : 200 * 1024 * 1024).run();
+  const r = await d.prepare(`INSERT INTO media_files(id,owner_id,course_id,purpose,scope,name,mime,size,ready,bound,created_at) SELECT ?,?,?,?,?,?,?,?,0,0,? WHERE (SELECT count(*) FROM media_files WHERE scope=? AND owner_id=? AND purpose=? ${courseId ? "AND course_id=?" : ""})<? AND (SELECT COALESCE(sum(size),0) FROM media_files WHERE scope=? AND owner_id=? AND purpose=? ${courseId ? "AND course_id=?" : ""})+?<=? AND ${guard.sql}`).bind(id,u.id, courseId, target.purpose, scope, meta.name, meta.mime, meta.size, new Date().toISOString(), scope, u.id, target.purpose, ...(courseId ? [courseId] : []), target.purpose === "avatar" ? 5 : 100, scope, u.id, target.purpose, ...(courseId ? [courseId] : []), meta.size, target.purpose === "avatar" ? 10*1024*1024:200*1024*1024,...guard.binds).run();
   if (!r.meta.changes)
     throw new ClassError(409, "Batas penyimpanan tercapai. Hapus upload yang belum digunakan lalu coba kembali.");
   try {
     await writeFile(path.join(dir, id), bytes, { flag: "wx", mode: 0o600 });
     await canUploadMedia(d, u, target);
-    const ready = d.prepare("UPDATE media_files SET ready=1 WHERE id=? AND owner_id=? AND scope=?").bind(id, u.id, scope);
+    const ready=d.prepare(`UPDATE media_files SET ready=1 WHERE id=? AND owner_id=? AND scope=? AND ${guard.sql}`).bind(id,u.id,scope,...guard.binds);
     if (target.purpose === "avatar") {
       const key = photoKey(u.id, scope), previous = target.previousId || "";
-      const pointer = d.prepare(databaseSql(d, "INSERT INTO settings(key,value) SELECT ?,? WHERE ?='' OR EXISTS(SELECT 1 FROM settings WHERE key=? AND value=?) ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value=?", "INSERT INTO settings(`key`,value) SELECT ?,? WHERE ?='' OR EXISTS(SELECT 1 FROM settings WHERE `key`=? AND value=?) ON DUPLICATE KEY UPDATE value=IF(value=?,VALUES(value),value)"))
-        .bind(key, id, previous, key, previous, previous);
+      const condition=`(?='' OR EXISTS(SELECT 1 FROM settings WHERE \`key\`=? AND value=?)) AND EXISTS(SELECT 1 FROM media_files WHERE id=? AND owner_id=? AND ready=1) AND ${guard.sql}`;
+      const pointer=d.prepare(databaseSql(d,`INSERT INTO settings(key,value) SELECT ?,? WHERE ${condition} ON CONFLICT(key) DO UPDATE SET value=excluded.value WHERE settings.value=?`,`INSERT INTO settings(\`key\`,value) SELECT ?,? WHERE ${condition} ON DUPLICATE KEY UPDATE value=IF(value=?,VALUES(value),value)`)).bind(key,id,previous,key,previous,id,u.id,...guard.binds,previous);
       const results = await d.batch([ready, pointer]);
+      if (!results[0].meta.changes)throw new ClassError(403,"Akses upload berubah sebelum berkas disimpan.");
       if (!results[1].meta.changes)
         throw new ClassError(409, "Foto profil sudah berubah. Muat ulang sebelum mengganti foto.");
       await cleanUnusedPhotos(d, u.id, env);
     }
-    else
-      await ready.run();
+    else {const result=await ready.run();if(!result.meta.changes)throw new ClassError(403,"Akses upload berubah sebelum berkas disimpan.");}
   }
   catch (e) {
     // Never remove a successfully activated photo merely because old-file cleanup failed.
@@ -133,8 +140,9 @@ async function cleanUnusedPhotos(d: PlatformDatabase, userId: string, env: FileE
   }
 }
 export async function clearPhoto(d: PlatformDatabase, u: ClassUser, previousId: string, env: FileEnvironment = process.env) {
+  const guard=await authorizationGuard(d,u,"account");
   const { scope } = fileStorage(env), key = photoKey(u.id, scope);
-  const r = await d.prepare("UPDATE settings SET value='' WHERE `key`=? AND value=?").bind(key, previousId).run();
+  const r=await d.prepare(`UPDATE settings SET value='' WHERE \`key\`=? AND value=? AND ${guard.sql}`).bind(key,previousId,...guard.binds).run();
   if (!r.meta.changes)
     throw new ClassError(409, "Foto profil sudah berubah. Muat ulang sebelum menghapus foto.");
   await cleanUnusedPhotos(d, u.id, env);
@@ -142,8 +150,9 @@ export async function clearPhoto(d: PlatformDatabase, u: ClassUser, previousId: 
 }
 export async function courseMediaList(d: PlatformDatabase, u: ClassUser, courseId: string, env: FileEnvironment = process.env) {
   await canUploadMedia(d, u, { purpose: "course", courseId });
+  const guard=await authorizationGuard(d,u,'curriculum',courseId);
   const { scope } = fileStorage(env);
-  return (await d.prepare("SELECT id,name,mime,size,ready,bound FROM media_files WHERE purpose='course' AND course_id=? AND scope=? ORDER BY created_at,id").bind(courseId, scope).all<{
+  const rows=(await d.prepare("SELECT id,name,mime,size,ready,bound FROM media_files WHERE purpose='course' AND course_id=? AND scope=? ORDER BY created_at,id").bind(courseId, scope).all<{
     id: string;
     name: string;
     mime: string;
@@ -151,12 +160,12 @@ export async function courseMediaList(d: PlatformDatabase, u: ClassUser, courseI
     ready: number;
     bound: number;
   }>()).results.map(f => ({ ...info(f), ready: f.ready, bound: f.bound }));
+  if(!await d.prepare(`SELECT 1 WHERE ${guard.sql}`).bind(...guard.binds).first())throw new ClassError(403,'Penugasan kurikulum berubah. Muat ulang media.');return rows;
 }
 export async function removeCourseMedia(d: PlatformDatabase, u: ClassUser, id: string, env: FileEnvironment = process.env) {
-  if (u.role !== "owner")
-    throw new ClassError(403, "Hanya Super Admin yang dapat menghapus upload materi.");
+  const guard=await authorizationGuard(d,u,"owner");
   const { scope } = fileStorage(env);
-  const r = await d.prepare("DELETE FROM media_files WHERE id=? AND purpose='course' AND scope=? AND bound=0").bind(id, scope).run();
+  const r = await d.prepare(`DELETE FROM media_files WHERE id=? AND purpose='course' AND scope=? AND bound=0 AND ${guard.sql}`).bind(id,scope,...guard.binds).run();
   if (!r.meta.changes)
     throw new ClassError(409, "Berkas sudah digunakan dalam course atau tidak ditemukan. Berkas yang pernah dipakai tetap disimpan.");
   await eraseBytes(id, env);
@@ -172,11 +181,12 @@ export async function validateCourseMedia(d: PlatformDatabase, c: Course, env: F
     id: string;
     mime: string;
   }>()).results;
-  if (files.length !== ids.length || blocks.some(b => !["image", "file"].includes(b.type) || (b.type === "image" && !files.find(f => f.id === mediaId(b.content))?.mime.startsWith("image/"))))
+  if (files.length !== ids.length || blocks.some(b => !["image", "video", "file"].includes(b.type) || (b.type === "image" && !files.find(f => f.id === mediaId(b.content))?.mime.startsWith("image/")) || (b.type === "video" && files.find(f => f.id === mediaId(b.content))?.mime !== "video/mp4")))
     throw new ClassError(409, "Upload materi tidak sesuai course, belum siap, atau jenis blok tidak sesuai.");
   return ids;
 }
-export async function readMedia(d: PlatformDatabase, u: ClassUser, id: string, env: FileEnvironment = process.env) {
+export async function readMedia(d: PlatformDatabase, u: ClassUser, id: string, env: FileEnvironment = process.env,classId?:string|null) {
+  let guard=await authorizationGuard(d,u,"account");
   const { scope } = fileStorage(env);
   const f = await d.prepare("SELECT * FROM media_files WHERE id=? AND scope=? AND ready=1").bind(id, scope).first<{
     id: string;
@@ -194,16 +204,22 @@ export async function readMedia(d: PlatformDatabase, u: ClassUser, id: string, e
     if (f.owner_id !== u.id || (await photoInfo(d, u.id, env))?.id !== id)
       throw new ClassError(404, "Foto profil tidak ditemukan.");
   }
-  else if (u.role !== "owner" && !(f.course_id && await hasCurriculumAccess(d,u,f.course_id))) {
-    if (!f.course_id || !f.bound)
-      throw new ClassError(404, "Berkas belum tersedia dalam course.");
-    const c = await readCourse(d, f.course_id, u), p = await readProgress(d, u.id, c.id);
-    const lessons = c.lessons.filter(l => l.blocks.some(b => b.content === mediaUrl(id) && ["image", "file"].includes(b.type)));
-    if (!lessons.length)
-      throw new ClassError(404, "Berkas tidak digunakan dalam materi.");
-    if (!lessons.some(l => !blockingLesson(c, l.id, p)))
-      throw new ClassError(403, "Selesaikan prasyarat materi sebelum membuka berkas ini.");
+  else {
+    if(!f.course_id)throw new ClassError(404,'Berkas belum tersedia dalam course.');
+    const ctx=guard.context;
+    if(ctx.owner||await hasCurriculumAccess(d,u,f.course_id))guard=await authorizationGuard(d,u,'curriculum',f.course_id);
+    else{
+      if(!f.bound)throw new ClassError(404,'Berkas belum tersedia dalam course.');
+      const staff=ctx.kind==='staff';
+      guard=await authorizationGuard(d,u,staff?'preview':'student',f.course_id);
+      const c=staff?await readCourse(d,f.course_id,u):await readLearningCourse(d,f.course_id,u);
+      const lessons=c.lessons.filter(l=>l.blocks.some(b=>b.content===mediaUrl(id)&&['image','video','file'].includes(b.type)));
+      if(!lessons.length)throw new ClassError(404,'Berkas tidak digunakan dalam materi.');
+      if(!staff){const ctx=await loadGraduationContext(d,u,c.id,classId);if(ctx.state.problem)throw new ClassError(409,ctx.state.problem.message);const allowed=lessons.find(l=>ctx.state.lessons.find(s=>s.lessonId===l.id)?.unlocked);if(!allowed)throw new ClassError(403,'Selesaikan prasyarat materi sebelum membuka berkas ini.');const proof=academicProofPredicate(ctx,allowed.id,true);guard.sql+=` AND ${proof.sql}`;guard.binds.push(...proof.binds);}
+      guard.sql+=' AND EXISTS(SELECT 1 FROM courses WHERE id=? AND version=?)';guard.binds.push(c.id,c.version);
+    }
   }
+  if(f.purpose==='avatar'){guard.sql+=' AND EXISTS(SELECT 1 FROM settings WHERE `key`=? AND value=?)';guard.binds.push(photoKey(u.id,scope),id);}
   try {
     if (!/^[a-f0-9-]{36}$/.test(id))
       throw new Error("id");
@@ -212,7 +228,9 @@ export async function readMedia(d: PlatformDatabase, u: ClassUser, id: string, e
       const stat = await handle.stat();
       if (!stat.isFile() || stat.size !== f.size || stat.size > FILE_LIMIT)
         throw new Error("size");
-      return { ...info(f), purpose: f.purpose, bytes: new Uint8Array(await handle.readFile()) };
+      const bytes=new Uint8Array(await handle.readFile());
+      if(!await d.prepare(`SELECT 1 FROM media_files WHERE id=? AND scope=? AND ready=1 AND ${guard.sql}`).bind(id,scope,...guard.binds).first())throw new ClassError(404,"Akses media berakhir.");
+      return {...info(f),purpose:f.purpose,bytes};
     }
     finally {
       await handle.close();

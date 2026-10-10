@@ -12,7 +12,7 @@ function failure(error: unknown) {
   return json({ error: "Notifikasi belum dapat dimuat. Coba lagi." }, 503);
 }
 export async function GET() {
-  try { const u = await identity(true); await requireVerifiedEmail(db(), u.id); return json(await notificationFeed(db(), u)); }
+  try { const u = await identity(true); return json(await notificationFeed(db(), u)); }
   catch (error) { return failure(error); }
 }
 export async function POST(req: Request) {
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
     let body: unknown;
     try { body = JSON.parse(raw); }
     catch { throw new AppError(400, "JSON tidak valid."); }
-    const u = await identity(true); await requireVerifiedEmail(db(), u.id);
+    const u = await identity(true);
     return json(await markNotificationsRead(db(), u, body));
   } catch (error) { return failure(error); }
 }

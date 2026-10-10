@@ -1,14 +1,16 @@
 "use client";
+import AccountFrame from "./account-frame";
+import type {NavigationUser} from "@/lib/account-navigation";
+
 import { useEffect, useRef, useState } from "react";
-import Link from "next/link";
-import { Bell, Layers3, RefreshCw, CheckCheck, ArrowUpRight, Loader2, LogOut } from "lucide-react";
+import { Bell, RefreshCw, CheckCheck, ArrowUpRight, Loader2 } from "lucide-react";
 import type { NotificationFeed, NotificationItem, NotificationKind } from "@/lib/notification-model";
 import "./account.css";
 import "./notifications.css";
 
 const labels: Record<NotificationKind, string> = {
   curriculum: "Kurikulum",
-  access: "Akses akun", invitation: "Tutor", class: "Penugasan kelas", task: "Tugas",
+  access: "Akses akun", invitation: "Izin staf", class: "Penugasan kelas", task: "Tugas",
   review: "Hasil review", submission: "Review Tutor", announcement: "Pengumuman", session: "Jadwal", reminder: "Pengingat",
 };
 const date = (value: string) => new Intl.DateTimeFormat("id-ID", {
@@ -25,7 +27,7 @@ async function request(body?: unknown): Promise<NotificationFeed> {
 
 const needsLogin = (error: unknown) => !!error && typeof error === "object" && "status" in error && [401, 403].includes(Number(error.status));
 
-export default function Notifications() {
+export default function Notifications({navigation}:{navigation:NavigationUser}) {
   const [data, setData] = useState<NotificationFeed | null>(null);
   const [filter, setFilter] = useState("all");
   const [error, setError] = useState("");
@@ -65,31 +67,31 @@ export default function Notifications() {
     await load();
     setRefreshing(false);
   }
-  async function mark(ids: string[], href?: string) {
+  async function mark(ids: string[]) {
     if (!ids.length || busy) return;
     setBusy(true); setError(""); setNotice(""); ++sequence.current;
     try {
       await request({ action: "markRead", ids });
-      if (href) { location.assign(href); return; }
+      window.dispatchEvent(new Event("notifications:changed"));
       await load();
       setNotice(ids.length === 1 ? "Notifikasi ditandai sudah dibaca." : "Notifikasi dalam daftar ditandai sudah dibaca.");
     } catch (e) { setError(e instanceof Error ? e.message : "Status baca belum tersimpan."); setLoginRequired(needsLogin(e)); if (needsLogin(e)) setData(null); }
     finally { setBusy(false); }
   }
   function open(e: React.MouseEvent<HTMLAnchorElement>, item: NotificationItem) {
-    if (item.readAt || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
-    e.preventDefault(); void mark([item.id], item.href);
+    if (item.readAt || e.defaultPrevented || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    // Follow the link immediately; a slow/failed receipt must not block navigation.
+    // keepalive lets this bounded, idempotent receipt finish during page unloading.
+    void fetch("/api/notifications", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "markRead", ids: [item.id]}), keepalive: true,
+    }).then(response => { if (response.ok) window.dispatchEvent(new Event("notifications:changed")); })
+      .catch(() => {}); // No success claim: if this fails, the item stays unread.
+
   }
   const unread = data?.items.filter((n) => !n.readAt) || [];
   const items = data?.items.filter((n) => filter === "all" || !n.readAt) || [];
-  return <div className="account-app">
-    <a className="account-skip" href="#notifications-main">Lewati ke konten</a>
-    <header className="notification-header">
-      <Link className="account-brand" href="/"><span><Layers3 size={24} /></span><b>Ruang<span> STEM</span></b></Link>
-      <nav aria-label="Navigasi notifikasi"><a href="/dashboard">Dashboard</a><a href="/classes">Kelas & Tutor</a><a href="/access">Akses akun</a><a href="/logout"><LogOut size={17} />Keluar</a></nav>
-    </header>
-    <main className="notification-main" id="notifications-main">
-      <div className="account-page-heading"><div><div className="eyebrow teal">KABAR UNTUK ANDA</div><h1><Bell size={29} /> Notifikasi</h1><p>Ikuti tugas, review, kabar kelas, dan pengingat sesi Anda.</p></div><button className="secondary" type="button" disabled={refreshing || busy} onClick={refresh}><RefreshCw size={17} className={refreshing ? "spin" : undefined} />Muat ulang</button></div>
+  return <AccountFrame user={navigation} current="notifications" mainId="notifications-main">      <div className="account-page-heading"><div><div className="eyebrow teal">KABAR UNTUK ANDA</div><h1><Bell size={29} /> Notifikasi</h1><p>Ikuti tugas, review, kabar kelas, dan pengingat sesi Anda.</p></div><button className="secondary" type="button" disabled={refreshing || busy} onClick={refresh}><RefreshCw size={17} className={refreshing ? "spin" : undefined} />Muat ulang</button></div>
       {error && <div className="feedback warning" role="alert">{error} {loginRequired && <a href="/login?return_to=%2Fnotifications">Masuk kembali</a>}</div>}
       {notice && <p className="feedback success" role="status">{notice}</p>}
       {!data && !error && <p role="status"><Loader2 className="spin" size={19} /> Memuat notifikasi…</p>}
@@ -104,6 +106,5 @@ export default function Notifications() {
           </article>)}
         </div>}
       </>}
-    </main>
-  </div>;
+  </AccountFrame>;
 }

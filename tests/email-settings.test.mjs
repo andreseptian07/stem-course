@@ -1,3 +1,4 @@
+import {authorizationDatabase,seedSqlitePrincipal} from "./authorization-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -5,7 +6,7 @@ import { emailSettingsOverview, updateEmailSettings, configuredAccountMailer, re
 import { emailRequired } from "../lib/email-policy.ts";
 const env = { APP_URL: "https://ruangstem.example", NODE_ENV: "production", MAIL_DELIVERY: "smtp", SMTP_HOST: "smtp.example", SMTP_PORT: "465", SMTP_USER: "private-smtp-user", SMTP_PASSWORD: "private-password-only", MAIL_FROM: "noreply@example.com" };
 function fixture() {
- const sql=new DatabaseSync(":memory:");sql.exec("CREATE TABLE settings(key TEXT PRIMARY KEY,value TEXT); INSERT INTO settings VALUES('owner','owner'); CREATE TABLE auth_credentials(user_id TEXT PRIMARY KEY,email TEXT); INSERT INTO auth_credentials VALUES('owner','owner@example.invalid');");
+ const {sql}=authorizationDatabase();sql.exec("INSERT INTO settings VALUES('owner','owner'); INSERT INTO users VALUES('owner','Owner','owner'); INSERT INTO user_access(user_id,status,created_at,updated_at) VALUES('owner','active','2026','2026'); INSERT INTO auth_credentials(user_id,email) VALUES('owner','owner@example.invalid');");seedSqlitePrincipal(sql,'owner','staff');
  const prepare=(query,values=[])=>({bind(...v){return prepare(query,v)},async first(){return sql.prepare(query).get(...values)??null},async all(){return{results:sql.prepare(query).all(...values)}},async run(){return{meta:{changes:Number(sql.prepare(query).run(...values).changes)}}}});
  return{sql,d:{prepare}};
 }

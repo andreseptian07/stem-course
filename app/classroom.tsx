@@ -1,27 +1,16 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
-import {
-  Layers3,
-  LayoutDashboard,
-  UserRound,
-  Users,
-  Menu,
-  ChevronDown,
-  LogOut,
-  BookOpen,
-  CalendarDays,
-  Settings2,
-  ArrowLeft,
-  Plus,
-  Video,
-  MapPin,
-  MessageCircle,
-  GraduationCap,
-  RefreshCw,
-} from "lucide-react";
+import {useUnsavedNavigation} from "./use-unsaved-navigation";
+import AccountFrame from "./account-frame";
+import type {NavigationUser} from "@/lib/account-navigation";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import { Users, CalendarDays, ArrowLeft, Plus, Video, MapPin, MessageCircle, GraduationCap, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import {browserModelContext} from "@/lib/browser-tools";
+import {responseJson, clientFetch} from "@/lib/client-fetch";
+import type {ClassList,ClassDetail,ClassSummary,ClassSession} from "@/lib/client-dto";
 import type { ClassForm } from "@/lib/classes";
 import Projects from "./projects";
-import NotificationLink from "./notification-link";
 import "./account.css";
 import "./classroom.css";
 const date = (s: string | null) =>
@@ -41,8 +30,11 @@ const statuses: Record<string, string> = {
   declined: "Permintaan ditolak",
   removed: "Keanggotaan berakhir",
 };
+function api(): Promise<ClassList>;
+function api(body: undefined, id: string): Promise<ClassDetail>;
+function api(body: unknown): Promise<{id:string}>;
 async function api(body?: unknown, id?: string) {
-  const r = await fetch(
+  const r = await clientFetch(
     "/api/classes" + (id ? "?class=" + encodeURIComponent(id) : ""),
     body
       ? {
@@ -52,12 +44,7 @@ async function api(body?: unknown, id?: string) {
         }
       : { cache: "no-store" },
   );
-  const d: any = await r.json();
-  if (!r.ok)
-    throw Object.assign(new Error(d.error || "Permintaan belum berhasil."), {
-      status: r.status,
-    });
-  return d;
+  return responseJson<unknown>(r, !!body);
 }
 function Label({
   name,
@@ -88,12 +75,12 @@ const local = (s: string | null) => {
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 };
 const iso = (s: string) => (s ? new Date(s + ":00+07:00").toISOString() : null);
-export default function Classes() {
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [data, setData] = useState<any>(null),
-    [detail, setDetail] = useState<any>(null),
+export default function Classes({navigation}:{navigation:NavigationUser}) {
+  const [data, setData] = useState<ClassList | null>(null),
+    [detail, setDetail] = useState<ClassDetail | null>(null),
     [id, setId] = useState(""),
     [error, setError] = useState(""),
+    [backgroundError, setBackgroundError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [filter, setFilter] = useState("mine"),
@@ -104,25 +91,27 @@ export default function Classes() {
     [student, setStudent] = useState(""),
     [invitee, setInvitee] = useState(""),
     [feedback, setFeedback] = useState(""),
-    [session, setSession] = useState<any>(null);
+    [session, setSession] = useState<ClassSession | null>(null);
   const initialized = useRef(false);
-  async function load(classId = id) {
+  const mutationInFlight = useRef(false);
+  const load = useCallback(async (classId = id) => {
     const d = await api();
     setData(d);
     if (classId) setDetail(await api(undefined, classId));
-  }
+    setBackgroundError("");
+  }, [id]);
   useEffect(() => {
     if (initialized.current) return;
     initialized.current = true;
     const selected = new URLSearchParams(location.search).get("class") || "";
     setId(selected);
     load(selected).catch((e) => setError(e.message));
-  }, []);
+  }, [load]);
   useEffect(() => {
     const timer = setInterval(() => {
       if (id && document.visibilityState === "visible")
         api(undefined, id)
-          .then(setDetail)
+          .then((next) => { setDetail(next); setBackgroundError(""); })
           .catch((e) => {
             if ([401, 403, 404].includes(e.status)) {
               setDetail(null);
@@ -130,7 +119,7 @@ export default function Classes() {
               setSession(null);
               setDirty(false);
             }
-            setError(e.message);
+            setBackgroundError(e.message);
           });
     }, 15000);
     return () => clearInterval(timer);
@@ -151,19 +140,19 @@ export default function Classes() {
     archived = c?.status === "archived",
     member = staff || c?.membership === "approved";
   const approved =
-    detail?.members?.filter((m: any) => m.status === "approved") || [];
+    detail?.members?.filter((m) => m.status === "approved") || [];
   const cards =
     data?.classes?.filter(
-      (c: any) =>
+      (c) =>
         filter === "all" ||
         c.isStaff ||
         c.membership === "approved" ||
         c.membership === "pending",
     ) || [];
   const toolsState = useRef({ cards, detail });
-  toolsState.current = { cards, detail };
+  useEffect(() => { toolsState.current = {cards,detail}; });
   useEffect(() => {
-    const ctx = (document as any).modelContext;
+    const ctx = browserModelContext();
     if (!ctx?.registerTool) return;
     const lifecycle = new AbortController();
     Promise.resolve(
@@ -179,7 +168,7 @@ export default function Classes() {
           },
           annotations: { readOnlyHint: true, untrustedContentHint: true },
           execute: () => ({
-            classes: toolsState.current.cards.map((c: any) => ({
+            classes: toolsState.current.cards.map((c) => ({
               id: c.id,
               name: c.name,
               course: c.courseTitle,
@@ -203,6 +192,8 @@ export default function Classes() {
     return () => lifecycle.abort();
   }, []);
   async function mutate(payload: unknown, success: string) {
+    if (mutationInFlight.current) return false;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     setNotice("");
@@ -215,16 +206,18 @@ export default function Classes() {
       setError(e instanceof Error ? e.message : "Permintaan gagal.");
       return false;
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
-  function editClass(value?: any) {
+  function editClass(value?: ClassSummary) {
     if (value) {
       setForm({
         id: value.id,
         version: value.version,
         courseId: value.courseId,
         mentorId: value.mentorId || null,
+        targetGrantVersion: value.mentorGrantVersion || 0,
         name: value.name,
         description: value.description,
         startsAt: value.startsAt,
@@ -236,8 +229,9 @@ export default function Classes() {
       setForm({
         id: crypto.randomUUID(),
         version: 0,
-        courseId: data.courses[0]?.id || "",
+        courseId: data?.courses[0]?.id || "",
         mentorId: null,
+        targetGrantVersion: 0,
         name: "",
         description: "",
         startsAt: null,
@@ -250,7 +244,8 @@ export default function Classes() {
   }
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!form) return;
+    if (!form || mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     try {
@@ -264,6 +259,7 @@ export default function Classes() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "Kelas belum tersimpan.");
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
@@ -271,82 +267,18 @@ export default function Classes() {
     setForm((prev) => (prev ? { ...prev, ...p } : prev));
     setDirty(true);
   }
-  function guard(e: React.MouseEvent<HTMLAnchorElement>) {
-    if (
-      dirty &&
-      !confirm(
-        "Tinggalkan halaman dan abaikan perubahan kelas yang belum disimpan?",
-      )
-    )
-      e.preventDefault();
-  }
+  const {guard,dialog: leaveDialog} = useUnsavedNavigation(dirty,()=>setDirty(false),"Perubahan kelas belum tersimpan. Tetap di halaman untuk menyimpan atau lanjutkan tanpa perubahan ini.");
   return (
-    <div className="account-app">
-      <a className="account-skip" href="#classes-main">
-        Lewati ke konten
-      </a>
-      <header className="account-header">
-        <a className="account-brand" href="/" onClick={guard}>
-          <span>
-            <Layers3 size={24} />
-          </span>
-          <b>
-            Ruang<span> STEM</span>
-          </b>
-        </a>
-        <a href="/courses" onClick={guard}>
-          Jelajahi course
-        </a>
-        <a className="account-user" href="/profile" aria-label="Buka profil saya" onClick={guard}><span className="account-avatar teal"><UserRound size={19} /></span><span>{data?.user.name || "Akun saya"}</span></a>
-        {data && <NotificationLink onClick={guard} />}
-        <a className="account-logout" href="/logout" onClick={guard}><LogOut size={18} />Keluar</a>
-      </header>
-      <div className="account-layout">
-        <aside className={`account-sidebar ${mobileMenu ? "mobile-nav-open" : ""}`}>
-          <span className="eyebrow">BELAJAR BERSAMA</span>
-          <button type="button" className="account-menu-toggle" aria-expanded={mobileMenu} aria-controls="account-navigation" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={19} />Menu akun<ChevronDown size={17} /></button>
-          <nav id="account-navigation" aria-label="Navigasi akun">
-            <a href="/dashboard" onClick={guard}>
-              <LayoutDashboard size={19} />
-              Dashboard
-            </a>
-            <a href="/profile" onClick={guard}>
-              <UserRound size={19} />
-              Profil saya
-            </a>
-            <a className="selected" aria-current="page" href="/classes" onClick={guard}>
-              <Users size={19} />
-              Kelas & Tutor
-            </a>
-            <a href="/learn?view=sessions" onClick={guard}>
-              <CalendarDays size={19} />
-              Sesi Tutor
-            </a>
-            <a href="/access" onClick={guard}>
-              <Users size={19} />
-              {owner ? "Kelola akses" : "Akses akun"}
-            </a>
-            <a href="/courses" onClick={guard}>
-              <BookOpen size={19} />
-              Katalog course
-            </a>
-            {owner && (
-              <a href="/learn?view=admin" onClick={guard}>
-                <Settings2 size={19} />
-                Kelola course
-              </a>
-            )}
-          </nav>
-        </aside>
-        <main className="account-main classes-main" id="classes-main">
+    <AccountFrame user={navigation} current="classes" mainId="classes-main" className="classes-main" onNavigate={guard}>
+      {leaveDialog}
           <div className="account-page-heading">
             <div>
               <div className="eyebrow teal">KELAS & PENDAMPINGAN</div>
-              <h1>{c ? c.name : "Belajar bersama Tutor"}</h1>
+              <h1>{c ? c.name : navigation.kind === "student" && !navigation.owner ? "Kelas saya" : "Kelas & Tutor"}</h1>
               <p>
                 {c
                   ? c.courseTitle
-                  : "Ikuti kelas, diskusikan kendala, dan bangun proyek bersama."}
+                  : navigation.kind === "student" && !navigation.owner ? "Ikuti kelas, diskusikan kendala, dan bangun proyek bersama." : "Kelola kelas, jadwal, dan pekerjaan peserta sesuai penugasan Anda."}
               </p>
             </div>
             <button
@@ -362,9 +294,9 @@ export default function Classes() {
               Muat ulang
             </button>
           </div>
-          {error && (
+          {(error || backgroundError) && (
             <div className="class-alert error" role="alert">
-              {error}
+              {error || backgroundError}
             </div>
           )}
           {notice && (
@@ -396,7 +328,7 @@ export default function Classes() {
                       onChange={(e) => patch({ courseId: e.target.value })}
                     >
                       <option value="">Pilih course</option>
-                      {data.courses.map((c: any) => (
+                      {data?.courses?.map((c) => (
                         <option key={c.id} value={c.id}>
                           {c.title}
                           {!c.published ? " (draft)" : ""}
@@ -408,11 +340,11 @@ export default function Classes() {
                     <select
                       value={form.mentorId || ""}
                       onChange={(e) =>
-                        patch({ mentorId: e.target.value || null })
+                        patch({ mentorId:e.target.value||null,targetGrantVersion:data?.mentors?.find((u)=>u.id===e.target.value)?.grantVersion||0 })
                       }
                     >
                       <option value="">Belum ditugaskan</option>
-                      {data.users.map((u: any) => (
+                      {data?.mentors?.map((u) => (
                         <option key={u.id} value={u.id}>
                           {u.name} · {u.id.slice(0, 8)}
                         </option>
@@ -517,7 +449,7 @@ export default function Classes() {
                 )}
               </div>
               <div className="class-cards">
-                {cards.map((c: any) => (
+                {cards.map((c) => (
                   <article className="class-card" key={c.id}>
                     <div className="class-card-top">
                       <GraduationCap size={26} />
@@ -540,12 +472,12 @@ export default function Classes() {
                     {c.membership && (
                       <p className="class-help">{statuses[c.membership]}</p>
                     )}
-                    <a
+                    <Link
                       className="class-primary"
                       href={"/classes?class=" + encodeURIComponent(c.id)}
                     >
                       Buka kelas
-                    </a>
+                    </Link>
                   </article>
                 ))}
               </div>
@@ -576,10 +508,10 @@ export default function Classes() {
           )}
           {c && !form && (
             <>
-              <a className="class-back" href="/classes">
+              <Link className="class-back" href="/classes">
                 <ArrowLeft size={16} />
                 Semua kelas
-              </a>
+              </Link>
               <section className="class-panel">
                 <div className="class-section-head">
                   <span className="class-badge">
@@ -639,14 +571,15 @@ export default function Classes() {
                     )}
                   </div>
                 )}
-                {member && c.published && (
-                  <a
+                {member && c.published && data?.user.kind==='student' && (
+                  <Link
                     className="class-outline"
-                    href={"/learn?course=" + encodeURIComponent(c.courseId)}
+                    href={"/learn?course=" + encodeURIComponent(c.courseId)+"&class="+encodeURIComponent(c.id)}
                   >
                     Buka materi course
-                  </a>
+                  </Link>
                 )}
+                {staff && c.published && <Link className="class-outline" href={'/preview?course='+encodeURIComponent(c.courseId)}>Pratinjau materi</Link>}
                 {!c.published && (
                   <p className="class-help">
                     Course sedang tidak diterbitkan. Materi belum tersedia untuk
@@ -665,9 +598,10 @@ export default function Classes() {
                   <Projects
                     key={c.id}
                     classId={c.id}
-                    userId={data.user.id}
+                    userId={detail?.user.id || ""}
                     archived={!!archived}
                     isParticipant={c.membership === "approved"}
+                    onChanged={()=>load(c.id)}
                   />
                   {staff && (
                     <section className="class-panel">
@@ -676,9 +610,9 @@ export default function Classes() {
                         <span>{approved.length} peserta aktif</span>
                       </div>
                       <p className="class-help">
-                        Progres mengikuti course, termasuk belajar mandiri atau
-                        kelas lain pada course yang sama. Revisi materi yang
-                        berubah tidak dihitung selesai.
+                        Hasil aktivitas, kuis, dan kode mengikuti course.
+                        Kelulusan tugas wajib diperiksa khusus untuk kelas ini.
+                        Hasil pada revisi materi lama tidak meluluskan revisi baru.
                       </p>
                       {owner && !archived && (
                         <form
@@ -704,7 +638,7 @@ export default function Classes() {
                               onChange={(e) => setInvitee(e.target.value)}
                             >
                               <option value="">Pilih akun</option>
-                              {data.users.map((u: any) => (
+                              {data?.users.map((u) => (
                                 <option value={u.id} key={u.id}>
                                   {u.name} · {u.id.slice(0, 8)}
                                 </option>
@@ -720,7 +654,7 @@ export default function Classes() {
                         <p>Belum ada peserta atau permintaan bergabung.</p>
                       )}
                       <div className="class-roster">
-                        {detail.members?.map((m: any) => (
+                        {detail.members?.map((m) => (
                           <div className="class-roster-item" key={m.userId}>
                             <div className="class-roster-top">
                               <div>
@@ -808,7 +742,7 @@ export default function Classes() {
                                   />
                                   <span>
                                     {m.progress.completed}/{m.progress.total}{" "}
-                                    materi · {m.progress.percent}%
+                                    tahap lulus · {m.progress.percent}%
                                   </span>
                                 </div>
                                 {m.progress.stale > 0 && (
@@ -821,7 +755,7 @@ export default function Classes() {
                                   <summary>
                                     Progres per materi & kuota latihan
                                   </summary>
-                                  {m.lessons.map((l: any) => (
+                                  {m.lessons?.map((l) => (
                                     <div
                                       className="class-lesson-row"
                                       key={l.id}
@@ -830,8 +764,8 @@ export default function Classes() {
                                         <b>{l.title}</b>
                                         <small>
                                           {l.complete
-                                            ? "Selesai"
-                                            : "Belum selesai"}{" "}
+                                            ? "Aktivitas selesai"
+                                            : "Aktivitas belum selesai"}{" "}
                                           · Kuis: {l.quizAttempts} percobaan ·
                                           Kode: {l.codeAttempts} percobaan
                                         </small>
@@ -906,7 +840,7 @@ export default function Classes() {
                         )}
                       </div>
                       <p className="class-help">
-                        Sesi online memakai tautan layanan meeting pilihan
+                        Jadwal ini tampil di kelas, dashboard, dan Sesi Tutor peserta. Sesi online memakai tautan layanan meeting pilihan
                         mentor. Jadwal dan tautan hanya tersedia untuk anggota
                         kelas.
                       </p>
@@ -950,7 +884,7 @@ export default function Classes() {
                                 onChange={(e) =>
                                   setSession({
                                     ...session,
-                                    kind: e.target.value,
+                                    kind: e.target.value as "online" | "offline",
                                   })
                                 }
                               >
@@ -1034,7 +968,7 @@ export default function Classes() {
                       {!detail.sessions?.length && (
                         <p>Belum ada pertemuan yang dijadwalkan.</p>
                       )}
-                      {detail.sessions?.map((s: any) => (
+                      {detail.sessions?.map((s) => (
                         <article className="class-session" key={s.id}>
                           {s.kind === "online" ? (
                             <Video size={20} />
@@ -1051,14 +985,14 @@ export default function Classes() {
                             </small>
                             <div className="class-actions">
                               {s.kind === "online" && (
-                                <a
+                                <Link
                                   className="class-outline"
                                   href={s.url}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                 >
                                   Buka meeting
-                                </a>
+                                </Link>
                               )}
                               {staff && !archived && (
                                 <button
@@ -1112,7 +1046,7 @@ export default function Classes() {
                               onChange={(e) => setStudent(e.target.value)}
                             >
                               <option value="">Pilih peserta</option>
-                              {approved.map((m: any) => (
+                              {approved.map((m) => (
                                 <option key={m.userId} value={m.userId}>
                                   {m.name}
                                 </option>
@@ -1137,7 +1071,7 @@ export default function Classes() {
                         </form>
                       )}
                       {!detail.feedback?.length && <p>Belum ada feedback.</p>}
-                      {detail.feedback?.map((f: any) => (
+                      {detail.feedback?.map((f) => (
                         <article className="class-message" key={f.id}>
                           <div>
                             <b>{f.mentorName}</b>
@@ -1167,7 +1101,7 @@ export default function Classes() {
                       <p>Mulai diskusi tentang materi atau proyek kelas.</p>
                     )}
                     <div className="class-message-list">
-                      {detail.posts?.map((p: any) => (
+                      {detail.posts?.map((p) => (
                         <article
                           className={
                             "class-message " +
@@ -1243,8 +1177,6 @@ export default function Classes() {
               )}
             </>
           )}
-        </main>
-      </div>
-    </div>
+    </AccountFrame>
   );
 }

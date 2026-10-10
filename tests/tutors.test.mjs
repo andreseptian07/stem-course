@@ -1,3 +1,4 @@
+import {authorizationDatabase,seedAccessUser} from "./authorization-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { inviteSchema, activationSchema, tutorMutation } from "../lib/tutors.ts";
@@ -30,5 +31,5 @@ test("owner registration preference takes priority over a normalized environment
   setting = { value: "true" };
   assert.equal(await registrationEnabled(d, { AUTH_REGISTRATION_ENABLED: "false" }), true);
   setting = { value: "owner" };
-  await assert.rejects(() => setRegistration(d, { id: "student" }, { enabled: true }), (e) => e.status === 403);
+  const f=authorizationDatabase();try{await seedAccessUser(f.d,"student","student");await f.d.prepare("INSERT INTO settings(key,value) VALUES('owner','someone-else')").run();await assert.rejects(()=>setRegistration(f.d,{id:"student"},{enabled:true}),e=>e.status===403);}finally{f.sql.close();}
 });

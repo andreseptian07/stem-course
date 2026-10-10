@@ -1,0 +1,1 @@
+ALTER TABLE `cohorts` ADD `assignment_proof` varchar(80) DEFAULT '' NOT NULL;

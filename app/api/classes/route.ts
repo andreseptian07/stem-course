@@ -1,4 +1,5 @@
 import { readRequestText } from "@/lib/request-body";
+import { databaseFailureMessage } from "@/lib/database-failure";
 import { checkAuthOrigin } from "@/lib/auth-policy";
 import { z } from "zod";
 import { identity, db, json, AppError } from "@/lib/server";
@@ -24,7 +25,7 @@ function failure(e: unknown) {
   return json(
     {
       error:
-        "Data kelas belum dapat diproses. Coba lagi; isian Anda tetap tersedia.",
+        databaseFailureMessage(e, "Data kelas belum dapat diproses. Coba lagi; isian Anda tetap tersedia."),
     },
     503,
   );

@@ -1,3 +1,5 @@
+import {seedPrincipal} from "./authorization-fixture.mjs";
+import {databaseSql} from "../lib/database.ts";
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -14,9 +16,11 @@ export async function projectFileScenarios(t,d) {
  let file;
  try {
   for(const u of [owner,tutor,alice,bob]) {await d.prepare('INSERT INTO users(id,name,role) VALUES(?,?,?)').bind(u.id,u.name,u.role).run();await d.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'active',1,?,?)").bind(u.id,new Date().toISOString(),new Date().toISOString()).run();}
+  await d.prepare(databaseSql(d,"INSERT INTO settings(key,value) VALUES('owner',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value","INSERT INTO settings(`key`,value) VALUES('owner',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")).bind(owner.id).run();
+  for(const u of [owner,tutor,alice,bob])await seedPrincipal(d,u.id,[owner,tutor].includes(u)?'staff':'student',u===tutor?['tutor']:[]);
   const course={...structuredClone(sampleCourse),id:prefix+'-course'};
   await d.prepare('INSERT INTO courses(id,data,version) VALUES(?,?,1)').bind(course.id,JSON.stringify(course)).run();
-  await saveClass(d,owner,{id:classId,version:0,courseId:course.id,mentorId:tutor.id,name:'Upload test',description:'',startsAt:null,endsAt:null,capacity:5,status:'open'});
+  await saveClass(d,owner,{id:classId,version:0,courseId:course.id,mentorId:tutor.id,targetGrantVersion:1,name:'Upload test',description:'',startsAt:null,endsAt:null,capacity:5,status:'open'});
   for(const u of [alice,bob]) await setMembership(d,owner,classId,u.id,'approved');
   await saveAssignment(d,owner,{id:assignmentId,classId,version:0,title:'Upload Test',instructions:'Synthetic fixture',status:'published',dueAt:null});
   const submit=(id,extra={})=>({action:'submit',id,assignmentId,assignmentVersion:1,previousId:null,previousVersion:0,body:'Synthetic result',url:'',...extra});

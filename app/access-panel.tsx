@@ -1,12 +1,18 @@
 "use client";
+import Link from "next/link";
+import {responseJson} from "@/lib/client-fetch";
+import type {AccessOverview, AccessUser} from "@/lib/access";
+import AccountFrame from "./account-frame";
+import type {NavigationUser} from "@/lib/account-navigation";
+
+import PermissionManagement from "./permission-management";
 import EmailManagement from "./email-management";
 import EmailStatus from "./email-status";
 import { useEffect, useRef, useState } from "react";
-import { ShieldCheck, Layers3, RefreshCw, LogOut } from "lucide-react";
+import { ShieldCheck, RefreshCw } from "lucide-react";
 import "./account.css";
 import "./access.css";
 import TutorManagement from "./tutor-management";
-import NotificationLink from "./notification-link";
 const labels: Record<string, string> = {
   pending: "Menunggu persetujuan",
   active: "Aktif",
@@ -18,7 +24,7 @@ const date = (s: string) =>
     timeStyle: "short",
     timeZone: "Asia/Jakarta",
   }).format(new Date(s)) + " WIB";
-async function api(body?: unknown) {
+async function api<T = AccessOverview>(body?: unknown) {
   const r = await fetch(
     "/api/access",
     body
@@ -29,20 +35,18 @@ async function api(body?: unknown) {
         }
       : { cache: "no-store" },
   );
-  const d: any = await r.json();
-  if (!r.ok) throw new Error(d.error || "Permintaan belum berhasil.");
-  return d;
+  return responseJson<T>(r, !!body);
 }
-export default function Access() {
+export default function Access({navigation}:{navigation:NavigationUser}) {
   const [section, setSection] = useState("accounts");
   const changeDialog = useRef<HTMLDialogElement>(null);
   const changeOpener = useRef<HTMLButtonElement | null>(null);
-  const [data, setData] = useState<any>(null),
+  const [data, setData] = useState<AccessOverview | null>(null),
     [error, setError] = useState(""),
     [notice, setNotice] = useState(""),
     [filter, setFilter] = useState("all"),
     [search, setSearch] = useState(""),
-    [change, setChange] = useState<any>(null),
+    [change, setChange] = useState<{user:AccessUser;status:"active"|"suspended"} | null>(null),
     [reason, setReason] = useState(""),
     [busy, setBusy] = useState(false);
   useEffect(() => {
@@ -60,35 +64,24 @@ export default function Access() {
     }
   }
   useEffect(() => {
-    void load();
+    const timer = setTimeout(() => {void load();}, 0);
+    return () => clearTimeout(timer);
   }, []);
   const owner = data?.user.role === "owner",
     rows = (data?.users || []).filter(
-      (u: any) =>
+      (u) =>
         (filter === "all" || u.status === filter) &&
         u.name.toLowerCase().includes(search.toLowerCase()),
     );
   return (
-    <div className="account-shell access-shell">
-      <a className="account-skip" href="#access-main">Lewati ke konten</a>
-      <header className="account-header">
-        <a className="account-brand" href="/">
-          <Layers3 />
-          Ruang STEM
-        </a>
-        <a href="/courses">Jelajahi course</a>
-        {data && <NotificationLink />}
-        <a className="account-logout" href="/logout"><LogOut size={18} />Keluar</a>
-      </header>
-      <main className="access-main" id="access-main">
-        <EmailStatus />
-        {owner && <p><a className="secondary button-link" href="/curriculum">Kelola Tim Kurikulum →</a></p>}
+<AccountFrame user={navigation} current="access" mainId="access-main">        <EmailStatus />
+        {owner && <p><Link className="secondary button-link" href="/curriculum">Kelola Tim Kurikulum →</Link></p>}
         <div className="access-heading">
           <div>
             <div className="eyebrow teal">AKUN & PERIZINAN</div>
             <h1>
               <ShieldCheck />{" "}
-              {owner ? "Kelola akses pengguna" : "Akses akun saya"}
+              {owner || (!data && navigation.owner) ? "Kelola akses pengguna" : "Akses akun saya"}
             </h1>
           </div>
           <button className="secondary" disabled={busy} onClick={load}>
@@ -115,18 +108,18 @@ export default function Access() {
             <h2>{data.user.name}</h2>
             <p>
               {data.status === "pending"
-                ? "Akun Anda sudah terdaftar. Pengelola perlu menyetujui akses sebelum Anda bisa mengikuti course dan kelas."
+                ? "Akun Anda sudah terdaftar dan menunggu persetujuan pengelola. Setelah disetujui, fitur tersedia sesuai jenis akun, izin, dan penugasan Anda."
                 : data.status === "suspended"
-                  ? "Akses belajar akun Anda sedang ditangguhkan. Hubungi pengelola untuk meminta peninjauan. Progres dan pekerjaan Anda tetap tersimpan."
-                  : "Akun Anda aktif. Silakan lanjutkan belajar atau pilih kelas."}
+                  ? "Akses akun Anda sedang ditangguhkan. Hubungi pengelola untuk meminta peninjauan. Progres dan pekerjaan Anda tetap tersimpan."
+                  : data.user.kind === "unclassified" ? "Akun memerlukan klasifikasi oleh pengelola." : data.user.kind === "staff" ? "Akun staf aktif. Buka dashboard untuk melihat pekerjaan sesuai izin Anda." : "Akun siswa aktif. Silakan lanjutkan belajar atau pilih kelas."}
             </p>
             <div className="access-actions">
               {data.status === "active" && (
-                <a className="primary button-link" href="/dashboard">
+                <Link className="primary button-link" href="/dashboard">
                   Buka dashboard
-                </a>
+                </Link>
               )}
-              <a href="/logout">Keluar</a>
+              <Link href="/logout">Keluar</Link>
             </div>
           </section>
         )}
@@ -134,16 +127,16 @@ export default function Access() {
           <>
             <EmailManagement />
             <div className="access-actions">
-              <a href="/dashboard">Dashboard</a>
-              <a href="/classes">Kelas & Tutor</a>
+              <Link href="/dashboard">Dashboard</Link>
+              <Link href="/classes">Kelas & Tutor</Link>
             </div>
             <nav className="access-tabs" aria-label="Pengelolaan akses">
-              {[["accounts", "Akun pengguna"], ["tutors", "Tutor & pendaftaran"], ["audit", "Riwayat akses"]].map(([key, label]) => <button key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>)}
+              {[["accounts", "Akun pengguna"], ["tutors", "Staf & pendaftaran"], ["audit", "Riwayat akses"]].map(([key, label]) => <button key={key} type="button" aria-pressed={section === key} onClick={() => setSection(key)}>{label}</button>)}
             </nav>
             {section === "accounts" && <section aria-label="Akun pengguna">
             <p className="access-help">
               Akun baru menunggu persetujuan. Akses belajar berlaku untuk
-              siswa dan tutor; penugasan tutor diatur per kelas. Persetujuan
+              siswa. Staf bekerja sesuai izin Tutor atau Tim Kurikulum dan penugasannya. Persetujuan
               akun tidak memberikan izin mengelola course.
             </p>
             <div className="access-controls">
@@ -161,18 +154,18 @@ export default function Access() {
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
                 >
-                  <option value="all">Semua ({data.users.length})</option>
+                  <option value="all">Semua ({(data.users || []).length})</option>
                   {Object.entries(labels).map(([s, l]) => (
                     <option key={s} value={s}>
                       {l} (
-                      {data.users.filter((u: any) => u.status === s).length})
+                      {(data.users || []).filter((u) => u.status === s).length})
                     </option>
                   ))}
                 </select>
               </label>
             </div>
             <div className="access-users">
-              {rows.map((u: any) => (
+              {rows.map((u) => (
                 <article className="access-card" key={u.id}>
                   <div>
                     <h2>{u.name}</h2>
@@ -180,9 +173,11 @@ export default function Access() {
                     <p>
                       {u.role === "owner"
                         ? "Super Admin"
-                        : u.role === "tutor" || u.mentorClasses
+                        : u.tutor === 1 && u.curriculum === 1
+                          ? `Tutor + Tim Kurikulum · ${u.mentorClasses} kelas ditugaskan`
+                        : u.tutor === 1
                           ? `Tutor · ${u.mentorClasses} kelas ditugaskan`
-                          : u.role === "curriculum" ? "Tim Kurikulum" : "Siswa"}
+                          : u.curriculum === 1 ? "Tim Kurikulum" : u.kind === "staff" ? "Staf · belum ada izin kerja aktif" : u.kind === "student" ? "Siswa" : "Perlu klasifikasi akun"}
                     </p>
                     <span className={"access-status " + u.status}>
                       {labels[u.status]}
@@ -217,7 +212,7 @@ export default function Access() {
             </div>
             {!rows.length && <p>Tidak ada akun dengan filter ini.</p>}
             </section>}
-            {section === "tutors" && <TutorManagement users={data.users} onChanged={load} />}
+            {section === "tutors" && <><PermissionManagement users={(data.users || [])} onChanged={load}/><TutorManagement users={(data.users || [])} onChanged={load} /></>}
             <dialog ref={changeDialog} className="access-dialog" aria-labelledby="access-change-title" onCancel={() => setChange(null)}>
             {change && (
               <form
@@ -250,7 +245,7 @@ export default function Access() {
                 </h2>
                 <p>
                   {change.status === "active"
-                    ? "Akun dapat membaca materi dan menggunakan fitur belajar. Akses Tutor tetap mengikuti penugasan kelas."
+                    ? "Akun dapat menggunakan fitur sesuai jenis akun, izin, dan penugasannya."
                     : "Permintaan belajar berikutnya ditolak hingga akses dipulihkan. Keanggotaan kelas, progres, dan kiriman tetap disimpan."}
                 </p>
                 <label>
@@ -286,8 +281,8 @@ export default function Access() {
               <p className="access-help">
                 100 perubahan terbaru. Riwayat hanya tersedia untuk Super Admin.
               </p>
-              {!data.events.length && <p>Belum ada perubahan akses.</p>}
-              {data.events.map((e: any) => (
+              {!(data.events || []).length && <p>Belum ada perubahan akses.</p>}
+              {(data.events || []).map((e) => (
                 <article className="access-card" key={e.id}>
                   <strong>
                     {e.targetName} · {labels[e.status]}
@@ -301,7 +296,6 @@ export default function Access() {
             </section>}
           </>
         )}
-      </main>
-    </div>
+    </AccountFrame>
   );
 }

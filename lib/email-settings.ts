@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { z } from "zod";
 import { appOrigin, AuthError } from "./auth-policy.ts";
+import {authorizationGuard} from "./authorization.ts";
 import { requireOwner } from "./access.ts";
 import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { mailConfiguration, accountMailer } from "./mailer.ts";
@@ -24,8 +25,10 @@ export async function readEmailSettings(d: PlatformDatabase, env: Env = process.
   return { key, raw: row?.value ?? null, state, smtp, active: state.enabled && tested, tested };
 }
 export async function emailSettingsOverview(d: PlatformDatabase, user: { id: string }, env: Env = process.env) {
-  await requireOwner(d, user);
+  await requireOwner(d,user);
+  const guard=await authorizationGuard(d,user,'owner');
   const r = await readEmailSettings(d, env);
+  if(!await d.prepare(`SELECT 1 WHERE ${guard.sql}`).bind(...guard.binds).first())throw new AuthError(403,'Hak pengelola berubah. Muat ulang pengaturan.');
   return { version: r.state.version, smtpReady: r.smtp.ready, tested: r.tested, testedAt: r.tested ? r.state.testedAt : null, enabled: r.active, requestedEnabled: r.state.enabled, required: r.state.required, preview: env.MAIL_DELIVERY === "preview" };
 }
 export const emailSettingMutation = z.discriminatedUnion("action", [
@@ -35,7 +38,8 @@ export const emailSettingMutation = z.discriminatedUnion("action", [
   z.object({ action: z.literal("requireVerification"), version: z.number().int().min(1), required: z.boolean() }).strict(),
 ]);
 export async function updateEmailSettings(d: PlatformDatabase, user: { id: string }, raw: unknown, env: Env = process.env, testSender?: DeliverMail) {
-  await requireOwner(d, user);
+  await requireOwner(d,user);
+  const guard=await authorizationGuard(d,user,"owner");
   const b = emailSettingMutation.parse(raw), r = await readEmailSettings(d, env);
   if (b.version !== r.state.version) throw new AuthError(409, "Pengaturan berubah. Muat ulang sebelum mencoba lagi.");
   const next = { ...r.state, version: r.state.version + 1 };
@@ -43,6 +47,7 @@ export async function updateEmailSettings(d: PlatformDatabase, user: { id: strin
     if (!r.smtp.ready) throw new AuthError(400, "Lengkapi konfigurasi SMTP terlebih dahulu.");
     const owner = await d.prepare("SELECT email FROM auth_credentials WHERE user_id=?").bind(user.id).first<{ email: string }>();
     if (!owner) throw new AuthError(400, "Email akun pengelola belum tersedia.");
+    if(!await d.prepare(`SELECT 1 WHERE ${guard.sql}`).bind(...guard.binds).first())throw new AuthError(409,'Hak pengelola berubah sebelum pengiriman email uji.');
     try { await (testSender ?? accountMailer({ ...env, MAIL_DELIVERY: "smtp" }))({ to: owner.email, purpose: "test" }); }
     catch { throw new AuthError(503, "Email uji belum dapat dikirim. Periksa konfigurasi SMTP dan coba lagi."); }
     next.testedAt = new Date().toISOString(); next.fingerprint = r.smtp.fingerprint;
@@ -59,10 +64,10 @@ export async function updateEmailSettings(d: PlatformDatabase, user: { id: strin
   }
   const value = JSON.stringify(next);
   const result = r.raw === null
-    ? await d.prepare(databaseSql(d, "INSERT OR IGNORE INTO settings(key,value) SELECT ?,? WHERE ?=(SELECT value FROM settings WHERE key='owner')", "INSERT INTO settings(`key`,value) SELECT ?,? WHERE ?=(SELECT value FROM settings WHERE `key`='owner') ON DUPLICATE KEY UPDATE `key`=`key`"))
-      .bind(r.key, value, user.id).run()
-    : await d.prepare("UPDATE settings SET value=? WHERE `key`=? AND value=? AND ?=(SELECT value FROM (SELECT value FROM settings WHERE `key`='owner') AS owner_setting)")
-      .bind(value, r.key, r.raw, user.id).run();
+    ? await d.prepare(databaseSql(d, `INSERT OR IGNORE INTO settings(key,value) SELECT ?,? WHERE ${guard.sql}`, `INSERT INTO settings(\`key\`,value) SELECT ?,? WHERE ${guard.sql} ON DUPLICATE KEY UPDATE \`key\`=\`key\``))
+      .bind(r.key, value,...guard.binds).run()
+    : await d.prepare(`UPDATE settings SET value=? WHERE \`key\`=? AND value=? AND ${guard.sql}`)
+      .bind(value,r.key,r.raw,...guard.binds).run();
   if (!result.meta.changes) throw new AuthError(409, "Pengaturan berubah. Muat ulang sebelum mencoba lagi.");
   return emailSettingsOverview(d, user, env);
 }

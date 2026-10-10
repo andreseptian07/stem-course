@@ -1,3 +1,6 @@
+import {evaluateGraduation} from "./graduation.ts";
+import {courseReviewThreshold} from "./grading-policy.ts";
+import type {GraduationState} from "./model.ts";
 import type { Course, Lesson, Progress, PublicCourse, Quiz } from "./model";
 export function progressFor(lesson: Lesson, progress: Progress[]) {
   return progress.find(
@@ -11,13 +14,8 @@ export function blockingLesson(
 ) {
   const index = course.lessons.findIndex((l) => l.id === lessonId);
   if (index < 0) throw new Error("Materi tidak ditemukan.");
-  return course.lessons.slice(0, index).find((l) => {
-    const p = progressFor(l, progress);
-    return (
-      (l.quiz?.mode === "required" && !p?.quizPassed) ||
-      (l.exercise?.required && !p?.codePassed)
-    );
-  });
+  const result=evaluateGraduation({course,progress,reviews:[],classId:null});
+  return course.lessons.slice(0,index).find(l=>!result.lessons.find(s=>s.lessonId===l.id)?.stagePassed);
 }
 export function gradeQuiz(quiz: Quiz, answers: Record<string, number[]>) {
   const results = quiz.questions.map((q) => {
@@ -56,28 +54,33 @@ export function canComplete(lesson: Lesson, p: Progress | undefined) {
 export function publicCourse(
   course: Course,
   progress: Progress[],
+  graduation?:GraduationState,
 ): PublicCourse {
+  const state=graduation||evaluateGraduation({course,progress,reviews:[],classId:null});
   return {
-    ...course,
+    id:course.id,version:course.version,title:course.title,description:course.description,category:course.category,level:course.level,published:course.published,sample:course.sample,certificateEnabled:course.certificateEnabled,reviewPassThreshold:courseReviewThreshold(course),overview:course.overview,graduation:state,
     lessons: course.lessons.map((l) => {
-      const blocker = blockingLesson(course, l.id, progress);
-      const { quiz, exercise, ...base } = l;
+      const status=state.lessons.find(s=>s.lessonId===l.id)!;
+      const blocker=status.unlocked?undefined:status.blockers[0];
+      const { quiz, exercise } = l;
+      const base={id:l.id,revision:l.revision,module:l.module,title:l.title,minutes:l.minutes};
       return {
         ...base,
-        locked: !!blocker,
-        blocker: blocker?.title,
-        blocks: blocker ? [] : l.blocks,
+        locked: !status.unlocked,
+        blocker: blocker?.message,
+        graduation:status,
+        blocks: status.unlocked ? l.blocks : [],
         quiz:
-          !blocker && quiz
+          status.unlocked && quiz
             ? {
                 ...quiz,
                 questions: quiz.questions.map(
-                  ({ correct, explanation, ...q }) => q,
+                  q => ({id:q.id,prompt:q.prompt,options:q.options}),
                 ),
               }
             : undefined,
         exercise:
-          !blocker && exercise
+          status.unlocked && exercise
             ? {
                 ...exercise,
                 tests: exercise.tests.filter((t) => !t.hidden),

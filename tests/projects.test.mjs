@@ -1,3 +1,4 @@
+import {seedSqlitePrincipal} from "./authorization-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -73,6 +74,12 @@ function setup() {
   sql
     .prepare("INSERT INTO courses(id,data,version) VALUES(?,?,1)")
     .run(sampleCourse.id, JSON.stringify(sampleCourse));
+  sql.prepare("INSERT INTO settings(key,value) VALUES('owner','owner')").run();
+  seedSqlitePrincipal(sql,"owner","staff");
+  seedSqlitePrincipal(sql,"mentor","staff",["tutor"]);
+  seedSqlitePrincipal(sql,"other","staff",["tutor"]);
+  seedSqlitePrincipal(sql,"alice","student");
+  seedSqlitePrincipal(sql,"bob","student");
   return { d, sql, ...users };
 }
 async function fixture() {
@@ -82,6 +89,7 @@ async function fixture() {
     version: 0,
     courseId: sampleCourse.id,
     mentorId: "mentor",
+    targetGrantVersion: 1,
     name: "STEM",
     description: "",
     startsAt: null,
@@ -228,7 +236,7 @@ test("drafts are staff-only; submissions and reviews remain private to the stude
   );
   await assert.rejects(
     () => saveAssignment(d, other, task()),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
   await assert.rejects(
     () => submitProject(d, alice, submit()),
@@ -246,7 +254,7 @@ test("drafts are staff-only; submissions and reviews remain private to the stude
   );
   await assert.rejects(
     () => projectList(d, other, "class-a"),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
 });
 test("review and resubmission preserve immutable history and instruction snapshots", async () => {
@@ -328,7 +336,7 @@ test("closing, archiving and membership revocation block new submissions and rev
   await setMembership(d, owner, "class-a", "alice", "removed");
   await assert.rejects(
     () => projectList(d, alice, "class-a"),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
   await assert.rejects(
     () => reviewProject(d, mentor, review({ version: 2 })),
@@ -433,8 +441,9 @@ test("dashboard includes only joined class projects and the newest personal revi
   ])
     assert.equal(secret in rows[0], false);
   assert.equal((await dashboardProjects(f.d, f.bob))[0].status, "submitted");
-  assert.equal((await dashboardProjects(f.d, f.mentor)).length, 0);
-  assert.equal((await dashboardProjects(f.d, f.owner)).length, 0);
+  // Staff have no personal learner capability, including an empty dashboard.
+  await assert.rejects(dashboardProjects(f.d, f.mentor), e => e.status === 403);
+  await assert.rejects(dashboardProjects(f.d, f.owner), e => e.status === 403);
   await submitProject(
     f.d,
     f.alice,

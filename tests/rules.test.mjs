@@ -9,15 +9,16 @@ import {
 import { courseSchema } from "../lib/validation.ts";
 import { sampleCourse } from "../lib/seed.ts";
 import { submitCode, pollCode } from "../lib/judge.ts";
-test("review does not lock; required quiz locks subsequent lessons", () => {
-  assert.equal(blockingLesson(sampleCourse, "sensor", []), undefined);
-  assert.equal(blockingLesson(sampleCourse, "coding", []).id, "sensor");
+test("activity completion and required quizzes gate subsequent lessons", () => {
+  assert.equal(blockingLesson(sampleCourse, "sensor", []).id,"embedded");
+  assert.equal(blockingLesson(sampleCourse,"coding",[{lessonId:"embedded",revision:1,complete:1}]).id,"sensor");
 });
 test("passing prerequisite unlocks next lesson; stale revision does not", () => {
-  const p = { lessonId: "sensor", revision: 1, quizPassed: 1 };
-  assert.equal(blockingLesson(sampleCourse, "coding", [p]), undefined);
+  const first={lessonId:"embedded",revision:1,complete:1};
+  const p = { lessonId: "sensor", revision: 1, quizPassed: 1,complete:1 };
+  assert.equal(blockingLesson(sampleCourse, "coding", [first,p]), undefined);
   assert.equal(
-    blockingLesson(sampleCourse, "coding", [{ ...p, revision: 0 }]).id,
+    blockingLesson(sampleCourse, "coding", [first,{ ...p, revision: 0 }]).id,
     "sensor",
   );
 });
@@ -32,7 +33,7 @@ test("feedback follows configuration; correct answer indexes are never returned"
   assert.deepEqual(gradeQuiz(q, { q2: [2] }).feedback, []);
   assert.equal(gradeQuiz(q, { q2: [0, 1], q3: [1] }).feedback.length, 2);
   assert.equal(
-    "correct" in publicCourse(sampleCourse, []).lessons[1].quiz.questions[0],
+    "correct" in publicCourse(sampleCourse, [{lessonId:"embedded",revision:1,complete:1}]).lessons[1].quiz.questions[0],
     false,
   );
 });
@@ -41,7 +42,8 @@ test("locked content and secret tests do not reach students", () => {
   assert.deepEqual(c.lessons[2].blocks, []);
   assert.equal(c.lessons[2].exercise, undefined);
   const unlocked = publicCourse(sampleCourse, [
-    { lessonId: "sensor", revision: 1, quizPassed: 1 },
+    {lessonId:"embedded",revision:1,complete:1},
+    { lessonId: "sensor", revision: 1, quizPassed: 1,complete:1 },
   ]);
   assert.equal(unlocked.lessons[2].exercise.tests.length, 2);
   assert.equal(unlocked.lessons[2].exercise.hiddenCount, 1);
@@ -161,8 +163,8 @@ test("dashboard ignores stale completion and resumes prerequisite rather than lo
     x.lessonId === "sensor" ? { ...x, revision: 0 } : x,
   );
   const stale = dashboardCourse(c, revised, null);
-  assert.equal(stale.completed, 4);
-  assert.equal(stale.percent, 80);
+  assert.equal(stale.completed, 1);
+  assert.equal(stale.percent, 20);
   assert.equal(stale.stale, 1);
   assert.equal(stale.resumeLesson, "sensor");
   assert.equal(stale.finished, false);

@@ -1,6 +1,8 @@
 "use client";
 import { useRef, useState, useEffect } from "react";
 import type { Exercise } from "@/lib/model";
+type PracticeResult = {index:number;passed:boolean;stdout:string;stderr:string};
+type RuntimeResult = {type:"result";nonce:string;stdout?:string;stderr?:string;error?:boolean};
 export default function BrowserPractice({
   exercise,
   source,
@@ -12,7 +14,7 @@ export default function BrowserPractice({
     cancel = useRef<(() => void) | null>(null);
   const [ready, setReady] = useState(false),
     [busy, setBusy] = useState(false),
-    [results, setResults] = useState<any[]>([]),
+    [results, setResults] = useState<PracticeResult[]>([]),
     [error, setError] = useState("");
   useEffect(() => {
     const listen = (e: MessageEvent) => {
@@ -36,7 +38,7 @@ export default function BrowserPractice({
       for (let i = 0; i < exercise.tests.length; i++) {
         const test = exercise.tests[i],
           nonce = crypto.randomUUID();
-        const value = await new Promise<any>((resolve, reject) => {
+        const value = await new Promise<RuntimeResult>((resolve, reject) => {
           const clean = () => {
             clearTimeout(timer);
             window.removeEventListener("message", listen);
@@ -49,8 +51,13 @@ export default function BrowserPractice({
               e.data.nonce !== nonce
             )
               return;
+            const payload: unknown = e.data;
+            if (!payload || typeof payload !== "object" ||
+              ("stdout" in payload && typeof payload.stdout !== "string") ||
+              ("stderr" in payload && typeof payload.stderr !== "string") ||
+              ("error" in payload && typeof payload.error !== "boolean")) return;
             clean();
-            resolve(e.data);
+            resolve(payload as RuntimeResult);
           };
           const timer = setTimeout(() => {
             clean();

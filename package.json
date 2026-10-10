@@ -11,17 +11,18 @@
     "build": "next build --webpack",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test tests/access.test.mjs tests/rules.test.mjs tests/code-security.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/mariadb-config.test.mjs tests/mariadb-adapter.test.mjs tests/learning-data.test.mjs tests/auth.test.mjs tests/tutors.test.mjs tests/notifications.test.mjs tests/account-email.test.mjs tests/email-settings.test.mjs tests/media.test.mjs tests/certificates.test.mjs tests/reports.test.mjs tests/curriculum.test.mjs",
+    "test": "node --experimental-strip-types --test tests/certificate-profile.test.mjs tests/supporting-flows.test.mjs tests/media-range.test.mjs tests/account-navigation.test.mjs tests/access.test.mjs tests/client-fetch.test.mjs tests/rules.test.mjs tests/graduation.test.mjs tests/code-security.test.mjs tests/judge-readiness.test.mjs tests/judge-reservation.test.mjs tests/judge-routes.test.mjs tests/classes.test.mjs tests/projects.test.mjs tests/mariadb-config.test.mjs tests/mariadb-adapter.test.mjs tests/learning-data.test.mjs tests/auth.test.mjs tests/tutors.test.mjs tests/notifications.test.mjs tests/account-email.test.mjs tests/email-settings.test.mjs tests/media.test.mjs tests/certificates.test.mjs tests/reports.test.mjs tests/curriculum.test.mjs tests/curriculum-invitation.test.mjs tests/authorization.test.mjs tests/authorization-data.test.mjs tests/authorization-migration.test.mjs",
     "check": "npm run typecheck && npm test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate",
     "db:generate:mariadb": "drizzle-kit generate --config drizzle.mariadb.config.ts",
     "db:check": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/mariadb-check.mjs",
     "db:migrate:mariadb": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/mariadb-migrate.mjs",
-    "test:mariadb": "node --experimental-strip-types --test tests/mariadb.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-access.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-learning.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-auth.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-tutors.integration.test.mjs",
+    "test:mariadb": "node --experimental-strip-types --test tests/mariadb.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-access.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-learning.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-auth.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-tutors.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-authorization.integration.test.mjs && node --experimental-strip-types --test tests/mariadb-judge.integration.test.mjs",
     "auth:admin": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/auth-admin.mjs",
     "test:http": "node scripts/test-node-http.mjs",
-    "dev:hosting-db": "node scripts/dev-hosting-db.mjs"
+    "dev:hosting-db": "node scripts/dev-hosting-db.mjs",
+    "test:judge:live": "node --env-file-if-exists=.env.local --experimental-strip-types scripts/test-judge-live.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

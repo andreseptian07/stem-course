@@ -1,3 +1,4 @@
+import {seedPrincipal} from "./authorization-fixture.mjs";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { notificationFeed, markNotificationsRead, notificationMutation } from "../lib/notifications.ts";
@@ -17,6 +18,8 @@ export async function notificationScenarios(t, d) {
     await d.prepare(databaseSql(d, "INSERT OR IGNORE INTO users(id,name,role) VALUES(?,?,?)", "INSERT INTO users(id,name,role) VALUES(?,?,?) ON DUPLICATE KEY UPDATE id=id")).bind(u.id, u.name, u.role).run();
     await d.prepare(databaseSql(d, "INSERT OR IGNORE INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,?,1,?,?)", "INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,?,1,?,?) ON DUPLICATE KEY UPDATE user_id=user_id")).bind(u.id, u.accessStatus, time, time).run();
   }
+  for(const u of [owner,alice,bob,tutor,other,outsider,pending]){if(!await d.prepare('SELECT 1 FROM account_principals WHERE user_id=?').bind(u.id).first())await seedPrincipal(d,u.id,[owner,tutor,other].includes(u)?'staff':'student',[tutor,other].includes(u)?['tutor']:[],u.accessStatus);}
+  for(const u of [alice,bob])await d.prepare("INSERT INTO enrollments(user_id,course_id,created_at,authorization_id) VALUES(?,'notify-course',?,'fixture')").bind(u.id,time).run();
   await d.prepare("INSERT INTO courses(id,data,version) VALUES(?,?,1)").bind("notify-course", JSON.stringify({ ...sampleCourse, id: "notify-course" })).run();
   for (const [id, mentor, name] of [["notify-class-a", tutor.id, "Class A"], ["notify-class-b", other.id, "Class B"]])
     await d.prepare("INSERT INTO cohorts(id,course_id,mentor_id,name,description,capacity,status,version,created_at) VALUES(?,'notify-course',?,?,'',20,'active',1,?)").bind(id, mentor, name, time).run();
@@ -48,7 +51,9 @@ export async function notificationScenarios(t, d) {
     assert.equal((await notificationFeed(d, other, at)).items.filter((n) => n.kind === "submission").length, 0);
     assert.ok((await notificationFeed(d, owner, at)).items.some((n) => n.title === "Akun siswa menunggu persetujuan"));
     assert.equal((await notificationFeed(d, pending, at)).items.length, 0);
-    assert.deepEqual((await notificationFeed(d, { ...alice, accessStatus: "suspended" }, at)).items.map((n) => n.kind), ["access"]);
+    await d.prepare("UPDATE user_access SET status='suspended',version=version+1 WHERE user_id=?").bind(alice.id).run();
+    assert.deepEqual((await notificationFeed(d,{...alice,accessStatus:"active"},at)).items.map(n=>n.kind),["access"]);
+    await d.prepare("UPDATE user_access SET status='active',version=version+1 WHERE user_id=?").bind(alice.id).run();
   });
   await t.test("read state is persistent, idempotent and separate for each recipient", async () => {
     const task = (await notificationFeed(d, alice, at)).items.find((n) => n.kind === "task");

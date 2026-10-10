@@ -1,3 +1,7 @@
+import {graduationRobustness} from './graduation-robustness.mjs';
+import {graduationAcceptance} from './graduation-acceptance.mjs';
+import {graduationWorkflow} from './graduation-scenarios.mjs';
+import {authorizationScenarios} from "./authorization-scenarios.mjs";
 import { curriculumScenarios } from "./curriculum-scenarios.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -23,5 +27,9 @@ test("learning features use the real MariaDB adapter", { skip: process.env.MARIA
     await certificateScenarios(t, database);
     await reportScenarios(t, database);
     await curriculumScenarios(t, database);
+    await authorizationScenarios(t,database);
+    await graduationRobustness(t,database);
+    await graduationAcceptance(t,database);
+    await t.test("T4 grades, two classes, revision, receipts and immutable certificate",()=>graduationWorkflow(database));
   } finally { await pool.end(); }
 });

@@ -967,3 +967,68 @@
 }
 
 .account-avatar img,.profile-avatar img{width:100%;height:100%;object-fit:cover;border-radius:inherit}.photo-controls{display:grid;gap:10px;margin:16px 0;text-align:left}.photo-controls label,.course-upload label{display:grid;gap:8px}.photo-controls input{max-width:100%;min-width:0;font-size:13px}.photo-controls small{line-height:1.5}
+
+/* Shared authenticated navigation: the same role-aware frame across work pages. */
+.shared-account-header { gap:20px; }
+.account-breadcrumb { display:flex; align-items:center; gap:10px; margin-bottom:22px; font-size:13px; color:#526c75; }
+.account-breadcrumb a { color:#096b64; text-decoration:underline; text-underline-offset:3px; }
+.shared-account-frame .curriculum-main { max-width:none; margin:0; }
+.shared-account-frame .account-main { overflow-wrap:anywhere; }
+.shared-account-frame .account-main > * { min-width:0; }
+.preview-main details { background:white; padding:20px; margin:18px 0; border:1px solid var(--line); border-radius:12px; }
+.preview-main summary { cursor:pointer; font-weight:650; line-height:1.6; }
+.preview-main pre { white-space:pre-wrap; overflow-wrap:anywhere; }
+.preview-main figure { margin-inline:0; }
+.account-menu-compact { padding:10px 24px; border-right:0; border-bottom:1px solid var(--line); }
+.account-menu-compact > .eyebrow { display:none; }
+.account-menu-compact .account-menu-toggle { display:flex; align-items:center; gap:10px; min-height:44px; }
+.account-menu-compact nav { display:none; }
+.account-menu-compact.mobile-nav-open nav { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:6px; padding-top:10px; }
+.study-frame #study-main:focus { outline:none; }
+@media(max-width:760px) {
+  .shared-account-header { column-gap:10px; }
+  .shared-account-header .notification-bell { min-width:44px; }
+  .shared-account-frame .account-page-heading { align-items:flex-start; flex-wrap:wrap; }
+  .shared-account-frame .account-page-heading h1 { font-size:27px; letter-spacing:-.5px; }
+  .shared-account-frame .curriculum-title { flex-wrap:wrap; align-items:flex-start; }
+  .account-menu-compact { padding:10px 16px; }
+  .account-menu-compact.mobile-nav-open nav { grid-template-columns:repeat(2,minmax(0,1fr)); }
+}
+@media(max-width:760px) {
+  .shared-account-header { grid-template-columns:minmax(0,1fr) 44px 44px auto; }
+  .shared-account-header .account-brand { grid-column:1 / 4; }
+  .shared-account-header > .account-logout { grid-column:4; }
+  .shared-account-header > .account-catalog { grid-row:2; grid-column:1; }
+  .shared-account-header .notification-link { grid-row:2; grid-column:2; min-width:44px; min-height:44px; padding:10px; position:relative; }
+  .shared-account-header .notification-link > span { display:none; }
+  .shared-account-header .notification-badge { position:absolute; right:-5px; top:-3px; }
+  .shared-account-header .account-user { grid-row:2; grid-column:3 / 5; }
+  .shared-account-frame .access-heading { align-items:flex-start; flex-wrap:wrap; }
+  .shared-account-frame .access-heading h1 { font-size:27px; }
+}
+.shared-account-frame .admin-page, .shared-account-frame .full-page { padding:0; margin:0; max-width:none; }
+.shared-account-frame .admin-tabs { flex-wrap:wrap; gap:8px 22px; }
+@media(max-width:760px) {
+  .shared-account-frame .admin-tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); overflow:visible; gap:4px 12px; }
+  .shared-account-frame .admin-tabs button { white-space:normal; text-align:left; min-height:44px; }
+}
+@media(min-width:761px) and (max-width:1100px) {
+  .shared-account-header { gap:14px; padding-inline:24px; }
+  .shared-account-header .account-user > span:last-child { display:none; }
+  .shared-account-frame .account-layout { grid-template-columns:210px minmax(0,1fr); }
+  .shared-account-frame .account-main { padding:30px 24px 50px; }
+}
+.shared-account-frame .account-main { container-type:inline-size; }
+@container (max-width:800px) {
+  .shared-account-frame .authoring { grid-template-columns:minmax(0,1fr); }
+  .shared-account-frame .author-outline { max-height:340px; overflow:auto; }
+  .shared-account-frame .form-grid { grid-template-columns:minmax(0,1fr); }
+  .shared-account-frame .admin-heading { flex-wrap:wrap; align-items:flex-start; }
+}
+
+.unsaved-navigation-dialog { width:min(480px,calc(100% - 32px)); border:1px solid #d3e1e1; border-radius:16px; padding:24px; color:#223c44; background:#fff; box-shadow:0 16px 60px #163c4433; }
+.unsaved-navigation-dialog::backdrop { background:#163c4480; }
+.unsaved-navigation-dialog h2 { font-size:22px; margin:0 0 14px; }
+.unsaved-navigation-dialog p { line-height:1.7; }
+.unsaved-navigation-dialog > div { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; }
+.unsaved-navigation-dialog button { min-height:44px; }

@@ -505,3 +505,10 @@
   font-size: 13px;
   color: #556274;
 }
+
+/* Let narrow cards shrink, including long task titles and project URLs. */
+.project-task-list { grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr)); }
+.project-task, .projects-panel, .project-submission, .project-form, .project-review, .project-files li { min-width:0; overflow-wrap:anywhere; }
+.project-task h3, .project-task p { overflow-wrap:anywhere; }
+.class-actions > .primary, .access-actions > .primary { color:#fff; background:#096b64; }
+@media(max-width:760px) { .project-task-list { grid-template-columns:minmax(0,1fr); } }

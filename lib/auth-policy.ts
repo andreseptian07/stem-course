@@ -1,4 +1,4 @@
-import { AccessError } from "./access.ts";
+import { AccessError } from "./access-error.ts";
 export class AuthError extends AccessError {}
 export function appOrigin(env: Record<string, string | undefined> = process.env) {
   const value = env.APP_URL;

@@ -5,7 +5,7 @@ import { checkAuthOrigin } from "@/lib/auth-policy";
 import { authRateLimit } from "@/lib/auth-data";
 import { readRequestBytes, readRequestText } from "@/lib/request-body";
 import { FILE_LIMIT } from "@/lib/project-files";
-import { canUploadMedia, uploadMedia, photoInfo, clearPhoto, courseMediaList, removeCourseMedia, PHOTO_LIMIT } from "@/lib/media-data";
+import { canUploadMedia, uploadMedia, ownPhoto, clearPhoto, courseMediaList, removeCourseMedia, PHOTO_LIMIT } from "@/lib/media-data";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const id = z.string().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/);
@@ -23,7 +23,7 @@ function failure(e: unknown) {
 export async function GET(req: Request) {
   try {
     const u = await identity(), courseId = new URL(req.url).searchParams.get("course");
-    return json(courseId ? { files: await courseMediaList(db(), u, id.parse(courseId)) } : { photo: await photoInfo(db(), u.id) });
+    return json(courseId ? { files: await courseMediaList(db(), u, id.parse(courseId)) } : { photo: await ownPhoto(db(), u) });
   }
   catch (e) {
     return failure(e);

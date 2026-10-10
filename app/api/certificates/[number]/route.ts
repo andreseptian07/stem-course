@@ -1,7 +1,6 @@
 import { db, identity, json, AppError } from "@/lib/server";
 import { appOrigin } from "@/lib/auth-policy";
-import { ownedCertificate } from "@/lib/certificates";
-import { certificatePdf } from "@/lib/certificate-pdf";
+import { ownedCertificatePdf } from "@/lib/certificates";
 import { certificateNumberPattern } from "@/lib/certificate-model";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,7 +13,7 @@ export async function GET(_req: Request, context: {
     const u = await identity(), { number } = await context.params;
     if (!certificateNumberPattern.test(number))
       throw new AppError(404, "Sertifikat tidak ditemukan.");
-    const c = await ownedCertificate(db(), u, number), bytes = await certificatePdf(c, appOrigin());
+    const {certificate:c,bytes}=await ownedCertificatePdf(db(),u,number,appOrigin());
     return new Response(bytes as BodyInit, { headers: { 'Content-Type': 'application/pdf', 'Content-Disposition': `attachment; filename="${c.number}.pdf"`, 'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff' } });
   }
   catch (e) {

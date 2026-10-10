@@ -16,6 +16,12 @@ export const courseSchema = z
     published: z.boolean(),
     sample: z.boolean(),
     certificateEnabled: z.boolean().default(false),
+    graduationPolicyVersion: z.literal(2).optional(),
+    reviewPassThreshold: z.number().int().min(0).max(100).default(80),
+    retiredLessonIds:z.array(id).max(500).optional(),
+    retiredRequirementIds:z.array(id).max(500).optional(),
+    learningMode: z.enum(["class_required", "independent_allowed"]).optional(),
+    policyState: z.enum(["needs_mapping", "ready"]).optional(),
     overview: z
       .object({
         outcomes: z.array(z.string().trim().min(1).max(500)).max(20),
@@ -31,6 +37,9 @@ export const courseSchema = z
         z.object({
           id,
           revision: z.number().int().positive(),
+          contentRevision: z.number().int().positive().optional(),
+          change: z.object({kind:z.enum(["editorial","substantial"]),reason:z.string().trim().min(1).max(2000)}).strict().optional(),
+          reviewRequirements: z.array(z.object({id,title:z.string().trim().min(1).max(160),instructions:z.string().trim().min(1).max(8000),rubric:z.string().trim().min(1).max(8000),revision:z.number().int().positive()}).strict()).max(10).optional(),
           module: z.string().trim().min(1).max(100),
           title: z.string().trim().min(1).max(160),
           minutes: z.number().int().min(1).max(600),
@@ -102,6 +111,8 @@ export const courseSchema = z
   .superRefine((c, ctx) => {
     if (new Set(c.lessons.map((l) => l.id)).size !== c.lessons.length)
       ctx.addIssue({ code: "custom", message: "ID materi harus unik." });
+    const requirements=c.lessons.flatMap(l=>l.reviewRequirements||[]);
+    if(new Set(requirements.map(r=>r.id)).size!==requirements.length)ctx.addIssue({code:"custom",message:"ID syarat review harus unik dalam course."});
     if (c.published && !c.lessons.length)
       ctx.addIssue({
         code: "custom",
@@ -128,7 +139,7 @@ export const courseSchema = z
       }
       for (const b of l.blocks)
         if (["video", "image", "file"].includes(b.type) && b.content) {
-          if (["image", "file"].includes(b.type) && mediaId(b.content)) continue;
+          if (["image", "video", "file"].includes(b.type) && mediaId(b.content)) continue;
           if (b.type === "file") { ctx.addIssue({code:"custom",message:"Gunakan berkas yang diunggah untuk blok dokumen."}); continue; }
           try {
             if (new URL(b.content).protocol !== "https:") throw 0;
