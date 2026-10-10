@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { prepareAccountEmail, confirmEmail, resetPasswordWithToken, requestMessage } from "../lib/account-email.ts";
+import { prepareAccountEmail, checkResetToken, confirmEmail, resetPasswordWithToken, requestMessage } from "../lib/account-email.ts";
 import { emailStatus, requireVerifiedEmail } from "../lib/email-policy.ts";
 import { hashPassword, verifyPassword } from "../lib/auth-password.ts";
 import { sessionUser, resetPassword } from "../lib/auth-data.ts";
@@ -39,6 +39,7 @@ export async function accountEmailScenarios(t, d) {
   });
   await t.test("GET-like status reads never consume links; verification is purpose-scoped and single-use", async () => {
     assert.equal((await emailStatus(d, userId)).verified, false);
+    await assert.rejects(() => checkResetToken(d, verificationToken, now), e => e.status === 400);
     await assert.rejects(() => resetPasswordWithToken(d, { token: verificationToken, password: newPassword }, now), e => e.status === 400);
     await confirmEmail(d, verificationToken, now);
     assert.equal((await emailStatus(d, userId)).verified, true);
@@ -50,10 +51,13 @@ export async function accountEmailScenarios(t, d) {
     const expiring = await issue("reset");
     assert.equal(expiring.message, requestMessage);
     const token = tokenOf(mails.at(-1));
+    await assert.rejects(() => checkResetToken(d, token, now + 30 * 60000), e => e.status === 400);
+    await assert.rejects(() => checkResetToken(d, "not-a-token", now), e => e.status === 400);
     await assert.rejects(() => resetPasswordWithToken(d, { token, password: newPassword }, now + 30 * 60000), e => e.status === 400);
     await assert.rejects(() => confirmEmail(d, "not-a-token", now), e => e.status === 400);
     await d.prepare("UPDATE auth_credentials SET email=? WHERE user_id=?").bind("email-test-changed@example.invalid", userId).run();
     assert.equal((await emailStatus(d, userId)).verified, false);
+    await assert.rejects(() => checkResetToken(d, token, now), e => e.status === 400);
     await assert.rejects(() => resetPasswordWithToken(d, { token, password: newPassword }, now), e => e.status === 400);
     await d.prepare("UPDATE auth_credentials SET email=? WHERE user_id=?").bind(email, userId).run();
   });
@@ -65,7 +69,13 @@ export async function accountEmailScenarios(t, d) {
     assert.ok(await sessionUser(d, session, now));
     await assert.rejects(() => resetPasswordWithToken(d, { token: first, password: "short" }, now));
     await assert.rejects(() => resetPasswordWithToken(d, { token: first, password: newPassword, userId: "owner" }, now));
+    const tokensBefore = (await d.prepare("SELECT token_hash,used_at,password_version FROM auth_email_tokens WHERE user_id=? ORDER BY token_hash").bind(userId).all()).results;
+    assert.deepEqual(await checkResetToken(d, first, now), { valid: true });
+    assert.deepEqual(await checkResetToken(d, first, now), { valid: true });
+    assert.deepEqual((await d.prepare("SELECT token_hash,used_at,password_version FROM auth_email_tokens WHERE user_id=? ORDER BY token_hash").bind(userId).all()).results, tokensBefore);
+    assert.ok(await sessionUser(d, session, now));
     const result = await resetPasswordWithToken(d, { token: first, password: newPassword }, now);
+    for (const token of [first, second]) await assert.rejects(() => checkResetToken(d, token, now), e => e.status === 400);
     assert.equal(result.email, email);
     const row = await d.prepare("SELECT password_hash AS hash,password_version AS version FROM auth_credentials WHERE user_id=?").bind(userId).first();
     assert.equal(row.version, 2); assert.equal(await verifyPassword(newPassword, row.hash), true);

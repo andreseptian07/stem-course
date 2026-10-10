@@ -49,6 +49,11 @@ async function findToken(d: PlatformDatabase, token: unknown, purpose: EmailPurp
   if (!c) throw new AuthError(400, "Tautan tidak valid atau kedaluwarsa. Minta tautan baru.");
   return { ...c, hash };
 }
+// Validate without consuming the link; submit still rechecks validity atomically.
+export async function checkResetToken(d: PlatformDatabase, token: unknown, at = Date.now()) {
+  await findToken(d, token, "reset", at);
+  return { valid: true };
+}
 export async function confirmEmail(d: PlatformDatabase, token: unknown, at = Date.now()) {
   const c = await findToken(d, token, "verify", at), claim = randomUUID(), verifiedAt = new Date(at).toISOString();
   const result = await d.batch([

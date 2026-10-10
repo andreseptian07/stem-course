@@ -6,7 +6,7 @@ import { db, json, AppError } from "@/lib/server";
 import { getSignedUser } from "@/lib/auth";
 import { checkAuthOrigin, sessionCookie } from "@/lib/auth-policy";
 import { readRequestText } from "@/lib/request-body";
-import { prepareAccountEmail, confirmEmail, resetPasswordWithToken, emailRequest, emailToken } from "@/lib/account-email";
+import { prepareAccountEmail, checkResetToken, confirmEmail, resetPasswordWithToken, emailRequest, emailToken } from "@/lib/account-email";
 import { emailStatus } from "@/lib/email-policy";
 import { configuredAccountMailer } from "@/lib/email-settings";
 export const dynamic = "force-dynamic";
@@ -34,6 +34,7 @@ export async function POST(req: Request) {
       emailRequest.extend({ action: z.literal("requestReset") }).strict(),
       emailRequest.extend({ action: z.literal("requestVerify") }).strict(),
       z.object({ action: z.literal("verify"), token: emailToken }).strict(),
+      z.object({ action: z.literal("checkReset"), token: emailToken }).strict(),
       z.object({ action: z.literal("reset"), token: emailToken, password: z.string().min(15).max(128) }).strict(),
     ]).parse(raw);
     if (b.action === "requestReset" || b.action === "requestVerify") {
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
       return json({ message: result.message });
     }
     await authRateLimit(db(), "emailConfirm", b.token);
+    if (b.action === "checkReset") return json(await checkResetToken(db(), b.token));
     if (b.action === "verify") return json(await confirmEmail(db(), b.token));
     const deliver = (await configuredAccountMailer(db()))!;
     const result = await resetPasswordWithToken(db(), { token: b.token, password: b.password });
