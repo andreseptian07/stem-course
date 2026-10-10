@@ -40,6 +40,11 @@ try {
   assert.equal((await fetch(base + "/api/email-settings", { headers: { "oai-authenticated-user-id": "access-owner" } })).status, 401);
   assert.equal((await post("/api/account-email", { action: "requestReset", email: "missing@ci.example" }, undefined, { Origin: "https://evil.example.com" })).status, 403);
   assert.equal((await post("/api/account-email", { action: "requestReset", email: "missing@ci.example", userId: "access-owner" })).status, 400);
+  const invalidResetCheck = await post("/api/account-email", { action: "checkReset", token: "x".repeat(43) });
+  assert.equal(invalidResetCheck.status, 400);
+  assert.match(invalidResetCheck.headers.get("cache-control"), /no-store/);
+  assert.equal((await post("/api/account-email", { action: "checkReset", token: "x".repeat(43) }, undefined, { Origin: "https://evil.example.com" })).status, 403);
+  assert.equal((await post("/api/account-email", { action: "checkReset", token: "x".repeat(43), purpose: "verify" })).status, 400);
   assert.equal((await fetch(base + "/dashboard", { redirect: "manual" })).status, 307);
   assert.equal((await fetch(base + "/notifications", { redirect: "manual" })).status, 307);
   const returnTo = "/classes?class=fixture-class&task=fixture-task";
