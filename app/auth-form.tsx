@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 import { useState } from "react";
 import { BookOpen, Loader2, ShieldCheck } from "lucide-react";
 import "./auth.css";
@@ -34,12 +35,12 @@ export default function AuthForm({ mode, returnTo = "/dashboard", registrationEn
     finally { setBusy(false); }
   }
   return <main className="auth-container">
-    <a className="auth-brand" href="/"><BookOpen size={27} /><span>Ruang<span> STEM</span></span></a>
+    <Link className="auth-brand" href="/"><BookOpen size={27} /><span>Ruang<span> STEM</span></span></Link>
     <section className="auth-card">
       <span className="auth-eyebrow">RUANG BELAJAR STEM</span>
       <h1>{titles[mode]}</h1><p>{descriptions[mode]}</p>
       {error && <div className="auth-error" role="alert">{error}</div>}
-      {done ? <div className="auth-success" role="status"><ShieldCheck /><h2>Akun berhasil dibuat</h2><p>{emailQueued ? "Periksa inbox dan folder spam untuk tautan verifikasi email. Anda dapat meminta tautan baru melalui halaman Verifikasi email." : "Silakan masuk untuk melihat status akun. Anda juga dapat meminta tautan melalui halaman Verifikasi email."} Persetujuan akses belajar tetap ditinjau Super Admin.</p><a className="auth-button" href={loginHref}>Masuk ke akun</a><a href="/verify-email">Verifikasi email</a></div>
+      {done ? <div className="auth-success" role="status"><ShieldCheck /><h2>Akun berhasil dibuat</h2><p>{emailQueued ? "Periksa inbox dan folder spam untuk tautan verifikasi email. Anda dapat meminta tautan baru melalui halaman Verifikasi email." : "Silakan masuk untuk melihat status akun. Anda juga dapat meminta tautan melalui halaman Verifikasi email."} Persetujuan akses belajar tetap ditinjau Super Admin.</p><Link className="auth-button" href={loginHref}>Masuk ke akun</Link><Link href="/verify-email">Verifikasi email</Link></div>
         : mode === "register" && !registrationEnabled ? <p>Pendaftaran belum dibuka. Hubungi pengelola untuk informasi akses.</p>
         : <form method="post" action="/api/auth" onSubmit={submit}>
           {(mode === "login" || mode === "register") && <label>Email<input name="email" type="email" autoComplete="email" required maxLength={254} placeholder="nama@email.com" /></label>}
@@ -49,7 +50,7 @@ export default function AuthForm({ mode, returnTo = "/dashboard", registrationEn
           {(mode === "register" || mode === "password") && <><small>Gunakan frasa unik dengan 15–128 karakter.</small><PasswordField label="Konfirmasi password" name="repeatPassword" autoComplete="new-password" minLength={15} /></>}
           <button className="auth-button" disabled={busy} type="submit">{busy && <Loader2 className="spin" size={18} />}{mode === "login" ? "Masuk" : mode === "register" ? "Buat akun" : mode === "password" ? "Simpan password baru" : "Keluar"}</button>
         </form>}
-      <div className="auth-links">{mode === "login" ? <><a href={registerHref}>Belum punya akun? Daftar</a>{!registrationEnabled && <small>Pendaftaran sedang ditutup oleh Super Admin.</small>}<a href="/forgot-password">Lupa password?</a><a href="/verify-email">Verifikasi email atau kirim ulang tautan</a></> : <a href={mode === "password" || mode === "logout" ? "/profile" : loginHref}>{mode === "password" || mode === "logout" ? "Kembali ke profil" : "Sudah punya akun? Masuk"}</a>}</div>
-    </section><a className="auth-home" href="/courses">Jelajahi course</a>
+      <div className="auth-links">{mode === "login" ? <><Link href={registerHref}>Belum punya akun? Daftar</Link>{!registrationEnabled && <small>Pendaftaran sedang ditutup oleh Super Admin.</small>}<Link href="/forgot-password">Lupa password?</Link><Link href="/verify-email">Verifikasi email atau kirim ulang tautan</Link></> : <Link href={mode === "password" || mode === "logout" ? "/profile" : loginHref}>{mode === "password" || mode === "logout" ? "Kembali ke profil" : "Sudah punya akun? Masuk"}</Link>}</div>
+    </section><Link className="auth-home" href="/courses">Jelajahi course</Link>
   </main>;
 }

@@ -11,6 +11,7 @@ export type Certificate = {
   revokedAt: string | null;
 };
 export type CertificateStatus = {
+  reviewPassThreshold?: number;
   enabled: boolean;
   recipientName: string;
   lessons: {

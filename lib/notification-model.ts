@@ -12,4 +12,5 @@ export type NotificationFeed = {
   items: NotificationItem[];
   unreadCount: number;
   limit: number;
+  navigation: { classes: boolean; curriculum: boolean };
 };

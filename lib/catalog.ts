@@ -45,6 +45,7 @@ export type CatalogSession = {
 export type CatalogState = {
   courses: CatalogCourse[];
   sessions: CatalogSession[];
-  user: { name: string; role: string; accessStatus: "active" | "pending" | "suspended" } | null;
+  user: { name: string; role: string; kind: "student" | "staff" | "unclassified"; accessStatus: "active" | "pending" | "suspended" } | null;
+  learning: { ready: boolean; enrolledCourseIds: string[]; resumeHref: string | null };
   registrationEnabled: boolean;
 };

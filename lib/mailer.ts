@@ -22,6 +22,14 @@ export function mailConfiguration(env: Env = process.env) {
   return { mode: "smtp" as const, host, port, user: env.SMTP_USER, password: env.SMTP_PASSWORD, from: env.MAIL_FROM! };
 }
 export function accountMailText(message: AccountMail) {
+  if (message.purpose === "staffInvite") return {subject:`Undangan ${message.staffRole} Ruang STEM`,text:`Super Admin mengundang Anda sebagai ${message.staffRole}. Hak kerja mengikuti penugasan Anda; fitur belajar pribadi siswa tidak tersedia untuk akun staf.
+
+Aktifkan undangan melalui tautan berikut dalam 7 hari:
+${message.url}
+
+Tautan berlaku sekali, hanya untuk email penerima. Akun yang sudah terdaftar perlu masuk dahulu; password tidak diganti. Jangan bagikan tautan ini. Jika tidak mengenali undangan, abaikan atau hubungi pengelola.
+
+Ruang STEM`};
   if (message.purpose === "test") return { subject: "Email uji Ruang STEM", text: "Ini adalah email uji pengaturan Ruang STEM. Jika pesan ini diterima, kembali ke Kelola akses untuk mengaktifkan pengiriman email akun. Periksa juga folder spam.\n\nRuang STEM" };
   const reset = message.purpose === "reset", changed = message.purpose === "changed";
   const subject = changed ? "Password Ruang STEM berhasil diubah" : reset ? "Pulihkan password Ruang STEM" : "Verifikasi email Ruang STEM";

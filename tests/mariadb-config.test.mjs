@@ -19,6 +19,10 @@ test("MariaDB config preserves password and requires authenticated TLS by defaul
   assert.deepEqual(options.flags, ["-FOUND_ROWS"]);
   assert.equal(options.connectionLimit, 3);
   assert.equal(options.queueLimit, 30);
+  assert.equal(options.maxIdle, 2);
+  assert.equal(mariaDbOptions({ ...valid, DB_POOL_LIMIT: "1" }).maxIdle, 0);
+  assert.equal(options.idleTimeout, 10000);
+  assert.equal(options.keepAliveInitialDelay, 0);
 });
 test("missing credentials and invalid limits fail before opening a connection", () => {
   for (const key of ["DB_HOST", "DB_USER", "DB_NAME", "DB_PASSWORD"])
@@ -27,6 +31,8 @@ test("missing credentials and invalid limits fail before opening a connection", 
     assert.throws(() => mariaDbOptions({ ...valid, DB_PORT: raw }), /DB_PORT/);
   for (const raw of ["0", "21", "NaN", "1e2"])
     assert.throws(() => mariaDbOptions({ ...valid, DB_POOL_LIMIT: raw }), /DB_POOL_LIMIT/);
+  for (const raw of ["0", "-1", "300001", "1.5"])
+    assert.throws(() => mariaDbOptions({ ...valid, DB_POOL_IDLE_MS: raw }), /DB_POOL_IDLE_MS/);
 });
 test("TLS cannot silently downgrade; CA needs explicit valid PEM configuration", () => {
   assert.throws(() => mariaDbOptions({ ...valid, DB_SSL_MODE: "preferred" }), /DB_SSL_MODE/);
@@ -47,7 +53,7 @@ test("operator errors never include driver messages, SQL or password", () => {
 });
 test("MariaDB schema preserves all platform tables, wide content and millisecond leases", () => {
   const tables = Object.values(schema).map(getTableConfig);
-  assert.equal(tables.length, 34);
+  assert.equal(tables.length, 43);
   assert.equal(tables.find((t) => t.name === "courses").columns.find((c) => c.name === "data").getSQLType(), "longtext");
   assert.equal(tables.find((t) => t.name === "attempts").columns.find((c) => c.name === "poll_at").getSQLType(), "bigint");
   const sql = fs.readFileSync("mariadb/0000_big_captain_marvel.sql", "utf8");

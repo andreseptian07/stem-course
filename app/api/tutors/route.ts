@@ -8,9 +8,9 @@ export const runtime = "nodejs";
 function failure(e: unknown) {
   if (e instanceof SyntaxError) return json({ error: "JSON tidak valid." }, 400);
   if (e instanceof AppError) return json({ error: e.message }, e.status);
-  if (e instanceof z.ZodError) return json({ error: "Periksa email, nama, kelas, dan alasan perubahan." }, 400);
+  if (e instanceof z.ZodError) return json({ error: "Periksa email, nama, jenis undangan, penugasan, dan alasan perubahan." }, 400);
   console.error("Tutor request failed", e instanceof Error ? e.name : "unknown");
-  return json({ error: "Pengelolaan Tutor belum dapat diproses. Coba lagi." }, 503);
+  return json({ error: "Pengelolaan staf belum dapat diproses. Coba lagi." }, 503);
 }
 export async function GET() {
   try { return json(await tutorOverview(db(), await identity())); } catch (e) { return failure(e); }

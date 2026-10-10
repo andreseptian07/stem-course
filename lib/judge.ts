@@ -12,6 +12,27 @@ export class JudgeError extends Error {
     );
   }
 }
+// Shared by submission and readiness inspection, so an incompatible service
+// cannot advertise readiness for limits that it will reject on submission.
+export const JUDGE_LIMITS = {
+  cpu_time_limit: 2,
+  cpu_extra_time: 0.5,
+  wall_time_limit: 5,
+  memory_limit: 64000,
+  stack_limit: 64000,
+  max_file_size: 64,
+  max_processes_and_or_threads: 16,
+  number_of_runs: 1,
+} as const;
+export async function judgeFingerprint(config: JudgeConfig) {
+  const normalized = JSON.stringify({
+    url: validateConfig(config), token: config.token || "", apiKey: config.apiKey || "",
+    apiHost: config.apiHost || "",
+    languages: Object.entries(config.languageIds || {}).sort(([a], [b]) => a.localeCompare(b)),
+  });
+  return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(normalized))))
+    .map(b => b.toString(16).padStart(2, "0")).join("");
+}
 export const STATUS: Record<number, string> = {
   1: "Dalam antrean",
   2: "Sedang dijalankan",
@@ -85,6 +106,7 @@ async function request(
       ...init,
       headers: headers(config),
       redirect: "error",
+      cache: "no-store",
       signal: AbortSignal.timeout(15000),
     });
     if (!r.ok || !r.body) throw new JudgeError();
@@ -168,14 +190,7 @@ export async function submitCode(
           source_code: encode(source),
           stdin: encode(t.input),
           expected_output: encode(t.expected),
-          cpu_time_limit: 2,
-          cpu_extra_time: 0.5,
-          wall_time_limit: 5,
-          memory_limit: 64000,
-          stack_limit: 64000,
-          max_file_size: 64,
-          max_processes_and_or_threads: 16,
-          number_of_runs: 1,
+          ...JUDGE_LIMITS,
           enable_per_process_and_thread_time_limit: false,
           enable_per_process_and_thread_memory_limit: false,
           enable_network: false,
@@ -216,11 +231,11 @@ export async function pollCode(
     data.submissions.length !== tokens.length
   )
     throw new JudgeError();
-  const results = data.submissions;
+  const results = data.submissions as JudgeResult[];
   if (
-    new Set(results.map((r: any) => r?.token)).size !== tokens.length ||
+    new Set(results.map(r => r?.token)).size !== tokens.length ||
     results.some(
-      (r: any) =>
+      r =>
         !tokens.includes(r?.token) ||
         !Number.isInteger(r?.status?.id) ||
         !STATUS[r.status.id],
@@ -228,7 +243,7 @@ export async function pollCode(
   )
     throw new JudgeError();
   return tokens.map((token) => {
-    const r = results.find((r: any) => r.token === token);
+    const r = results.find(r => r.token === token)!;
     return {
       token,
       status: { id: r.status.id, description: STATUS[r.status.id] },
@@ -272,9 +287,12 @@ export async function inspectJudge(
   config: JudgeConfig,
   fetcher: typeof fetch = fetch,
 ) {
-  const about = await request(config, "/about", {}, fetcher);
-  const settings = await request(config, "/config_info", {}, fetcher);
-  const languages = await request(config, "/languages", {}, fetcher);
+  const [about, settings, languages, workers] = await Promise.all([
+    request(config, "/about", {}, fetcher),
+    request(config, "/config_info", {}, fetcher),
+    request(config, "/languages", {}, fetcher),
+    request(config, "/workers", {}, fetcher),
+  ]);
   const match =
     typeof about?.version === "string" &&
     /^(\d+)\.(\d+)\.(\d+)$/.exec(about.version);
@@ -286,18 +304,30 @@ export async function inspectJudge(
           (Number(match[2]) === 13 && Number(match[3]) >= 1))));
   const supported =
     Array.isArray(languages) &&
+    Object.keys(config.languageIds || {}).length > 0 &&
     Object.values(config.languageIds || {}).every((id) =>
       languages.some((l) => l.id === id),
     );
   const network =
     settings?.enable_network === false &&
     settings?.allow_enable_network === false;
+  const limits = Object.entries(JUDGE_LIMITS).every(([key, value]) => {
+    const maximum = settings?.[`max_${key}`];
+    return typeof maximum === "number" && Number.isFinite(maximum) && maximum >= value;
+  });
+  const worker = Array.isArray(workers) && workers.find(w => w?.queue === "default");
+  const queue = !!worker && [worker.available, worker.idle, worker.working, worker.size].every(
+    n => Number.isSafeInteger(n) && n >= 0,
+  ) && worker.available > 0 && worker.idle + worker.working > 0 &&
+    Number.isSafeInteger(settings?.max_queue_size) && settings.max_queue_size > worker.size;
   return {
     checks: [
       { label: "Versi minimum dengan perbaikan keamanan 1.13.1", ok: patched },
       { label: "Jaringan program dimatikan di layanan", ok: network },
       { label: "Bahasa latihan tersedia", ok: supported },
+      { label: "Batas eksekusi platform didukung layanan", ok: limits },
+      { label: "Worker aktif dan antrean belum penuh", ok: queue },
     ],
-    passed: patched && network && supported,
+    passed: patched && network && supported && limits && queue,
   };
 }

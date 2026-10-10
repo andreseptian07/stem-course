@@ -1,16 +1,19 @@
+import {planCoursePublication} from "./academic-revisions.ts";
 import { randomUUID } from "node:crypto";
+import { concurrentRead } from "./concurrent-read.ts";
 import { z } from "zod";
 import { AccessError, requireOwner } from "./access.ts";
 import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { courseSchema } from "./validation.ts";
 import { validateCourseMedia } from "./media-data.ts";
 import { fileStorage } from "./project-files.ts";
-import { curriculumPredicate, curriculumBindings, requireCurriculumAccess } from "./curriculum-access.ts";
+import { requireCurriculumAccess } from "./curriculum-access.ts";
+import { authorizationGuard, policySql, grantSql, readAccessContext, requirePermission } from "./authorization.ts";
 import type { Course } from "./model.ts";
 const identifier = z.string().min(1).max(80).regex(/^[a-zA-Z0-9_-]+$/);
 const version = z.number().int().nonnegative();
 export const curriculumMutation = z.discriminatedUnion("action", [
-    z.object({ action: z.literal("member"), courseId: identifier, userId: identifier, version, active: z.boolean() }).strict(),
+    z.object({ action: z.literal("member"), courseId: identifier, userId: identifier, version, active: z.boolean(), targetGrantVersion: version.default(0) }).strict(),
     z.object({ action: z.enum(["start", "restart"]), courseId: identifier, version, draftVersion: version.default(0) }).strict(),
     z.object({ action: z.literal("save"), course: courseSchema, version }).strict(),
     z.object({ action: z.enum(["submit", "requestChanges", "publish"]), courseId: identifier, version, note: z.string().trim().max(2000).default("") }).strict(),
@@ -18,6 +21,7 @@ export const curriculumMutation = z.discriminatedUnion("action", [
 type User = {
     id: string;
     role: string;
+    name?: string;
 };
 type Draft = {
     course_id: string;
@@ -31,22 +35,32 @@ type Draft = {
     proof: string;
 };
 const conflict = () => new AccessError(409, "Draf, akses, atau course sudah berubah. Muat ulang sebelum melanjutkan.");
-async function isOwner(d: PlatformDatabase, u: User) { return !!await d.prepare("SELECT 1 FROM settings WHERE `key`='owner' AND value=?").bind(u.id).first(); }
+
 export async function curriculumOverview(d: PlatformDatabase, u: User) {
-    const owner = await isOwner(d, u);
-    const courses = (await d.prepare("SELECT c.id,c.data,c.version FROM courses c WHERE ?=1 OR EXISTS(SELECT 1 FROM curriculum_members m WHERE m.course_id=c.id AND m.user_id=? AND m.active=1) ORDER BY c.id").bind(owner ? 1 : 0, u.id).all<{
+    const actor = await authorizationGuard(d, u, "curriculum"), owner = actor.context.owner;
+    const courses = (await d.prepare(`SELECT c.id,c.data,c.version,COALESCE((SELECT version FROM curriculum_members WHERE course_id=c.id AND user_id=?),0) AS scopeVersion FROM courses c WHERE ${policySql("curriculum","c.id")} ORDER BY c.id`).bind(u.id,u.id).all<{
         id: string;
         data: string;
         version: number;
+        scopeVersion: number;
     }>()).results;
-    const items = await Promise.all(courses.map(async (c) => {
-        await requireCurriculumAccess(d, u, c.id);
-        const draft = await d.prepare("SELECT * FROM curriculum_drafts WHERE course_id=?").bind(c.id).first<Draft>();
-        const members = (await d.prepare("SELECT m.user_id AS userId,m.active,m.version,u.name,u.role FROM curriculum_members m JOIN users u ON u.id=m.user_id WHERE m.course_id=? ORDER BY u.name").bind(c.id).all()).results;
-        const events = (await d.prepare("SELECT e.id,e.kind,e.detail,e.created_at AS createdAt,u.name AS actor FROM curriculum_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.course_id=? ORDER BY e.created_at DESC,e.id DESC LIMIT 40").bind(c.id).all()).results;
+    const guards:Awaited<ReturnType<typeof authorizationGuard>>[]=[];
+    const items = await concurrentRead(courses, async (c) => {
+        const guard=await authorizationGuard(d,u,'curriculum',c.id);
+        guard.sql+=' AND EXISTS(SELECT 1 FROM courses WHERE id=? AND version=?)';guard.binds.push(c.id,c.version);
+        if(!owner){guard.sql+=' AND EXISTS(SELECT 1 FROM curriculum_members WHERE user_id=? AND course_id=? AND version=?)';guard.binds.push(u.id,c.id,c.scopeVersion);}
+        guards.push(guard);
+        const [draft, memberRows, eventRows] = await Promise.all([
+            d.prepare("SELECT * FROM curriculum_drafts WHERE course_id=?").bind(c.id).first<Draft>(),
+            d.prepare(`SELECT m.user_id AS userId,m.active,m.version,m.grant_version AS grantVersion,u.name,CASE WHEN ${grantSql("u.id","tutor")} THEN 'tutor' ELSE 'curriculum' END AS role,CASE WHEN m.active=1 AND g.version=m.grant_version AND ${grantSql("u.id","curriculum")} THEN 1 ELSE 0 END AS effective FROM curriculum_members m JOIN users u ON u.id=m.user_id LEFT JOIN staff_grants g ON g.user_id=m.user_id AND g.capability='curriculum' WHERE m.course_id=? ORDER BY u.name`).bind(c.id).all(),
+            d.prepare("SELECT e.id,e.kind,e.detail,e.created_at AS createdAt,u.name AS actor FROM curriculum_events e LEFT JOIN users u ON u.id=e.actor_id WHERE e.course_id=? ORDER BY e.created_at DESC,e.id DESC LIMIT 40").bind(c.id).all(),
+        ]);
+        const members = memberRows.results, events = eventRows.results;
         return { course: { ...JSON.parse(c.data), version: c.version } as Course, members, events, draft: draft ? { course: JSON.parse(draft.data) as Course, version: draft.version, baseVersion: draft.base_version, state: draft.state, updatedAt: draft.updated_at, note: draft.note } : null };
-    }));
-    const people = owner ? (await d.prepare("SELECT u.id,u.name,u.role FROM users u JOIN user_access a ON a.user_id=u.id WHERE a.status='active' AND u.id!=? ORDER BY u.name").bind(u.id).all()).results : [];
+    });
+    const people = owner ? (await d.prepare(`SELECT u.id,u.name,g.version AS grantVersion,CASE WHEN ${grantSql("u.id","tutor")} THEN 'tutor' ELSE 'curriculum' END AS role FROM users u JOIN staff_grants g ON g.user_id=u.id AND g.capability='curriculum' WHERE ${grantSql("u.id","curriculum")} AND u.id!=? ORDER BY u.name`).bind(u.id).all()).results : [];
+    for(const guard of guards)if(!await d.prepare(`SELECT 1 WHERE ${guard.sql}`).bind(...guard.binds).first())throw new AccessError(403,'Penugasan kurikulum berubah. Muat ulang halaman.');
+    if (!await d.prepare(`SELECT 1 WHERE ${actor.sql}`).bind(...actor.binds).first()) throw new AccessError(403,"Hak akses berubah. Muat ulang halaman.");
     return { owner, items, people };
 }
 export async function mutateCurriculum(d: PlatformDatabase, u: User, raw: unknown) {
@@ -54,28 +68,34 @@ export async function mutateCurriculum(d: PlatformDatabase, u: User, raw: unknow
     await requireCurriculumAccess(d, u, courseId);
     const proof = randomUUID(), time = new Date().toISOString();
     const event = (kind: string, detail: string, predicate: string, bindings: (string | number)[]) => d.prepare(`INSERT INTO curriculum_events(id,course_id,actor_id,kind,detail,created_at) SELECT ?,?,?,?,?,? WHERE ${predicate}`).bind(proof, courseId, u.id, kind, detail, time, ...bindings);
-    const guard = curriculumPredicate, access = curriculumBindings(u.id, courseId);
+    const patch = (kind: string, detail: string, value: object) => ({ courseId, ...value, event: { id: proof, kind, detail, createdAt: time, actor: u.name || 'Anda' } });
+    const draftState = (row: Draft, state: string, course: Course, note = row.note) => ({ course, version: row.version + 1, baseVersion: row.base_version, state, updatedAt: time, note });
+    const actor = await authorizationGuard(d,u, ["member","publish","requestChanges"].includes(b.action) ? "owner" : "curriculum", ["member","publish","requestChanges"].includes(b.action) ? undefined : courseId);
+    const guard = actor.sql, access = actor.binds;
     if (b.action === 'member') {
         await requireOwner(d, u);
         if (b.userId === u.id)
             throw new AccessError(400, "Super Admin sudah memiliki akses ke seluruh course.");
-        const target = await d.prepare("SELECT u.name FROM users u JOIN user_access a ON a.user_id=u.id WHERE u.id=? AND (?=0 OR a.status='active')").bind(b.userId, b.active ? 1 : 0).first<{
-            name: string;
-        }>();
-        if (!target)
-            throw new AccessError(400, "Aktifkan akun penyusun terlebih dahulu melalui Kelola akses.");
-        const old = await d.prepare("SELECT version FROM curriculum_members WHERE course_id=? AND user_id=?").bind(courseId, b.userId).first<{
-            version: number;
-        }>();
-        if ((old?.version || 0) !== b.version)
-            throw conflict();
-        const ownerGuard = "EXISTS(SELECT 1 FROM settings WHERE `key`='owner' AND value=?) AND EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND status='active') AND EXISTS(SELECT 1 FROM courses WHERE id=?) AND EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND (?=0 OR status='active'))";
-        const write = old ? d.prepare(`UPDATE curriculum_members SET active=?,version=version+1,granted_by=?,updated_at=?,proof=? WHERE course_id=? AND user_id=? AND version=? AND ${ownerGuard}`).bind(b.active ? 1 : 0, u.id, time, proof, courseId, b.userId, b.version, u.id, u.id, courseId, b.userId, b.active ? 1 : 0) : d.prepare(`${databaseSql(d, 'INSERT OR IGNORE', 'INSERT')} INTO curriculum_members(course_id,user_id,active,version,granted_by,updated_at,proof) SELECT ?,?,?,1,?,?,? WHERE ${ownerGuard} ${databaseSql(d, '', 'ON DUPLICATE KEY UPDATE user_id=user_id')}`).bind(courseId, b.userId, b.active ? 1 : 0, u.id, time, proof, u.id, u.id, courseId, b.userId, b.active ? 1 : 0);
-        const [r] = await d.batch([write, event(b.active ? 'memberGranted' : 'memberRevoked', target.name, "EXISTS(SELECT 1 FROM curriculum_members WHERE course_id=? AND user_id=? AND version=? AND proof=?)", [courseId, b.userId, b.version + 1, proof])]);
-        if (!r.meta.changes)
-            throw conflict();
-        return { saved: true };
+        const target = await readAccessContext(d,{id:b.userId});
+        if (b.active) await requirePermission(d,target,"curriculum");
+        if (b.active && (!b.targetGrantVersion || target.grantVersions.curriculum !== b.targetGrantVersion)) throw conflict();
+        const old = await d.prepare("SELECT version,grant_version FROM curriculum_members WHERE course_id=? AND user_id=?").bind(courseId,b.userId).first<{version:number;grant_version:number}>();
+        if ((old?.version || 0) !== b.version) throw conflict();
+        const epoch = b.active ? b.targetGrantVersion : old?.grant_version || 0;
+        const ownerGuard = `${actor.sql} AND EXISTS(SELECT 1 FROM courses WHERE id=?)`;
+        const targetGuard = b.active ? ` AND ${grantSql("target.user_id","curriculum")} AND target.version=?` : '';
+        const predicate = `${ownerGuard} AND EXISTS(SELECT 1 FROM staff_grants target WHERE target.user_id=? AND target.capability='curriculum'${targetGuard})`;
+        const bindings = [...actor.binds,courseId,b.userId,...(b.active ? [epoch] : [])];
+        const write = old
+            ? d.prepare(`UPDATE curriculum_members SET active=?,version=version+1,grant_version=?,granted_by=?,updated_at=?,proof=? WHERE course_id=? AND user_id=? AND version=? AND ${predicate}`).bind(b.active?1:0,epoch,u.id,time,proof,courseId,b.userId,b.version,...bindings)
+            : d.prepare(databaseSql(d,`INSERT OR IGNORE INTO curriculum_members(course_id,user_id,active,version,grant_version,granted_by,updated_at,proof) SELECT ?,?,?,1,?,?,?,? WHERE ${predicate}`,`INSERT INTO curriculum_members(course_id,user_id,active,version,grant_version,granted_by,updated_at,proof) SELECT ?,?,?,1,?,?,?,? WHERE ${predicate} ON DUPLICATE KEY UPDATE user_id=user_id`)).bind(courseId,b.userId,b.active?1:0,epoch,u.id,time,proof,...bindings);
+        const success="EXISTS(SELECT 1 FROM curriculum_members WHERE course_id=? AND user_id=? AND version=? AND proof=?)", proofBindings=[courseId,b.userId,b.version+1,proof];
+        const kind=b.active?'memberGranted':'memberRevoked';
+        const [r] = await d.batch([write,event(kind,target.name,success,proofBindings),d.prepare(`INSERT INTO authorization_events(id,actor_id,target_id,kind,capability,scope_id,reason,data,created_at) SELECT ?,?,?,?,'curriculum',?,'Penugasan course',?,? WHERE ${success}`).bind(proof,u.id,b.userId,kind,courseId,JSON.stringify({active:b.active,grantVersion:epoch}),time,...proofBindings)]);
+        if (!r.meta.changes) throw conflict();
+        return { saved:true,patch:patch(kind,target.name,{member:{userId:b.userId,name:target.name,role:target.capabilities.tutor?'tutor':'curriculum',active:b.active?1:0,effective:b.active?1:0,version:b.version+1,grantVersion:epoch}}) };
     }
+
     const old = await d.prepare("SELECT data,version FROM courses WHERE id=?").bind(courseId).first<{
         data: string;
         version: number;
@@ -91,7 +111,7 @@ export async function mutateCurriculum(d: PlatformDatabase, u: User, raw: unknow
         const [r] = await d.batch([write, event('started', 'Draf baru dari versi ' + old.version, "EXISTS(SELECT 1 FROM curriculum_drafts WHERE course_id=? AND proof=?)", [courseId, proof])]);
         if (!r.meta.changes)
             throw conflict();
-        return { saved: true };
+        return { saved: true, patch: patch("started", "Draf baru dari versi " + old.version, { draft: { course: JSON.parse(data), version: b.draftVersion + 1, baseVersion: old.version, state: "draft", updatedAt: time, note: "" } }) };
     }
     if (!draft || draft.version !== b.version)
         throw conflict();
@@ -110,7 +130,7 @@ export async function mutateCurriculum(d: PlatformDatabase, u: User, raw: unknow
         const [r] = await d.batch(writes);
         if (!r.meta.changes)
             throw conflict();
-        return { course: next, version: b.version + 1 };
+        return { course: next, version: b.version + 1, patch: patch("saved", "Draf disimpan", { draft: draftState(draft, "draft", next) }) };
     }
     if (b.action === 'requestChanges' || b.action === 'publish')
         await requireOwner(d, u);
@@ -131,16 +151,18 @@ export async function mutateCurriculum(d: PlatformDatabase, u: User, raw: unknow
         next.published = previous.published;
         next.sample = previous.sample;
         next.version = old.version + 1;
-        next.lessons = next.lessons.map(l => { const prior = previous.lessons.find(p => p.id === l.id); return { ...l, revision: prior ? (JSON.stringify({ ...l, revision: 0 }) === JSON.stringify({ ...prior, revision: 0 }) ? prior.revision : prior.revision + 1) : 1 }; });
+        next = planCoursePublication(next,previous);
         await validateCourseMedia(d, next);
     }
     const ownerGuard = b.action === 'submit' ? '' : " AND EXISTS(SELECT 1 FROM settings WHERE `key`='owner' AND value=?)";
     writes.push(d.prepare(`UPDATE curriculum_drafts SET state=?,version=version+1,note=?,updated_by=?,updated_at=?,proof=? WHERE course_id=? AND version=? AND state IN (${expected.map(() => '?').join(',')}) AND ${guard}${ownerGuard}${b.action === 'publish' ? " AND EXISTS(SELECT 1 FROM courses WHERE id=? AND version=?)" : ''}`).bind(state, reviewNote, u.id, time, proof, courseId, b.version, ...expected, ...access, ...(ownerGuard ? [u.id] : []), ...(b.action === 'publish' ? [courseId, old.version] : [])));
-    if (next)
+    if (next) {
         writes.push(d.prepare("UPDATE courses SET data=?,version=? WHERE id=? AND version=? AND EXISTS(SELECT 1 FROM curriculum_drafts WHERE course_id=? AND proof=? AND state='published')").bind(JSON.stringify(next), next.version, courseId, old.version, courseId, proof));
+        writes.push(d.prepare("INSERT INTO academic_change_events(id,actor_id,object_id,kind,data,created_at) SELECT ?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM courses WHERE id=? AND version=?) AND EXISTS(SELECT 1 FROM curriculum_drafts WHERE course_id=? AND proof=?)").bind(proof,u.id,courseId,"course_publication",JSON.stringify({previous:JSON.parse(old.data),next}),time,courseId,next.version,courseId,proof));
+    }
     writes.push(event(b.action, reviewNote || (b.action === 'submit' ? 'Draf diajukan untuk review Admin.' : 'Draf disetujui dan materi diterapkan.'), "EXISTS(SELECT 1 FROM curriculum_drafts WHERE course_id=? AND proof=?)", [courseId, proof]));
     const [r] = await d.batch(writes);
     if (!r.meta.changes)
         throw conflict();
-    return { saved: true };
+    return { saved: true, patch: patch(b.action, reviewNote || (b.action === "submit" ? "Draf diajukan untuk review Admin." : "Draf disetujui dan materi diterapkan."), { draft: draftState(draft, state, JSON.parse(draft.data), reviewNote), ...(next ? { course: next } : {}) }) };
 }

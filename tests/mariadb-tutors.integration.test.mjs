@@ -1,3 +1,4 @@
+import {curriculumInvitationScenarios} from "./curriculum-invitation-scenarios.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createMariaDb } from "../db/mariadb.ts";
@@ -58,7 +59,7 @@ test("tutor invitations and student registration use an isolated MariaDB databas
       assert.equal(new URL(invitation.url).search, "");
       const stored = await d.prepare("SELECT token_hash FROM tutor_invitations WHERE id=?").bind(invitation.id).first();
       assert.equal(stored.token_hash.length, 64); assert.notEqual(stored.token_hash, secret);
-      assert.equal(JSON.stringify(await tutorOverview(d, owner)).includes(secret), false);
+      assert.equal(JSON.stringify(await tutorOverview(d, owner,env)).includes(secret), false);
       assert.equal((await inspectTutorInvitation(d, secret)).existingAccount, false);
       await assert.rejects(() => activateTutorInvitation(d, { token: secret, email: "other@tutor.ci.example", password }, null), rejects(400));
       const outcomes = await Promise.allSettled([1, 2].map(() => activateTutorInvitation(d, { token: secret, email: invitation.email, password }, null)));
@@ -96,7 +97,7 @@ test("tutor invitations and student registration use an isolated MariaDB databas
       await assert.rejects(() => inspectTutorInvitation(d, token(first)), rejects(410));
       assert.ok(await inspectTutorInvitation(d, token(second)));
       const changed = await createTutorInvitation(d, owner, { email: "changed@tutor.ci.example", displayName: "Changed", classId: classB.id }, env);
-      await saveClass(d, owner, { ...shape, id: classB.id, name: "Class B", version: 1, mentorId: tutor.id });
+      await saveClass(d, owner, { ...shape, id: classB.id, name: "Class B", version: 1, mentorId: tutor.id,targetGrantVersion:1 });
       await assert.rejects(() => activateTutorInvitation(d, { token: token(changed), email: changed.email, password }, null), rejects(409));
       assert.equal((await d.prepare("SELECT COUNT(*) AS n FROM auth_credentials WHERE email=?").bind(changed.email).first()).n, 0);
       assert.equal((await d.prepare("SELECT accepted_at FROM tutor_invitations WHERE id=?").bind(changed.id).first()).accepted_at, null);
@@ -111,9 +112,9 @@ test("tutor invitations and student registration use an isolated MariaDB databas
       const pending = await createTutorInvitation(d, owner, { email: signed.email, displayName: "Reinvite", classId: null }, env);
       await revokeTutor(d, owner, tutor.id, "End teaching assignment");
       const revoked = await registerIdentity(d, await sessionUser(d, tutorToken), false);
-      assert.equal(revoked.role, "student"); requireActive(revoked);
+      assert.equal(revoked.role, "staff"); requireActive(revoked);
       await assert.rejects(() => classAccess(d, revoked, classA.id, "staff"), (e) => [403, 404].includes(e.status));
-      assert.equal((await d.prepare("SELECT COUNT(*) AS n FROM cohorts WHERE mentor_id=?").bind(tutor.id).first()).n, 0);
+      assert.equal((await d.prepare("SELECT COUNT(*) AS n FROM cohorts WHERE mentor_id=?").bind(tutor.id).first()).n, 2);
       assert.equal((await d.prepare("SELECT COUNT(*) AS n FROM class_assignments WHERE id='tutor-assignment'").first()).n, 1);
       assert.equal((await d.prepare("SELECT COUNT(*) AS n FROM cohort_sessions WHERE id='tutor-session'").first()).n, 1);
       await assert.rejects(() => inspectTutorInvitation(d, token(pending)), rejects(410));
@@ -130,5 +131,6 @@ test("tutor invitations and student registration use an isolated MariaDB databas
       assert.equal((await d.prepare("SELECT accepted_at FROM tutor_invitations WHERE id=?").bind(invitation.id).first()).accepted_at, null);
       assert.equal((await d.prepare("SELECT COUNT(*) AS n FROM auth_credentials WHERE email=?").bind(invitation.email).first()).n, 0);
     });
+    await curriculumInvitationScenarios(t,d);
   } finally { await pool.end(); }
 });

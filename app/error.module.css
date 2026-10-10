@@ -1,0 +1,76 @@
+.page {
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  background: #f5f8f9;
+}
+
+.panel {
+  width: 100%;
+  max-width: 512px;
+  padding: 32px;
+  border: 1px solid #e0e8e9;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 2px 8px #142b350a;
+}
+
+.eyebrow {
+  margin: 0 0 16px;
+  color: #087f78;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.title {
+  margin: 0;
+  color: #142b35;
+  font-size: 28px;
+  line-height: 1.25;
+}
+
+.message {
+  margin: 20px 0 0;
+  color: #526670;
+  line-height: 1.65;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.retry {
+  min-height: 44px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  background: #087f78;
+  color: #fff;
+  font-weight: 700;
+}
+
+.retry:hover {
+  background: #096b64;
+}
+
+.retry:focus-visible,
+.dashboard:focus-visible {
+  outline: 3px solid #087f78;
+  outline-offset: 3px;
+}
+
+.dashboard {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  color: #334e59;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}

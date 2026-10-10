@@ -8,5 +8,10 @@ import { createMariaDbAdapter } from "./mariadb-adapter.ts";
 export function createMariaDb(env: Record<string, string | undefined> = process.env) {
   if (typeof window !== "undefined") throw new Error("Database hanya boleh diakses dari server.");
   const pool = createPool(mariaDbOptions(env));
-  return { pool, db: drizzle(pool, { schema, mode: "default" }), database: createMariaDbAdapter(pool) };
+  return { pool, db: drizzle(pool, { schema, mode: "default" }), database: createMariaDbAdapter(pool, {
+    onEvent(event) {
+      if (event.outcome !== "ok" || event.durationMs >= 1000)
+        console.warn("Database operation", JSON.stringify(event));
+    },
+  }) };
 }

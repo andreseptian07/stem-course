@@ -1,31 +1,21 @@
 "use client";
+import {useUnsavedNavigation} from "./use-unsaved-navigation";
+import AccountFrame, {AccountHeader, AccountMenu} from "./account-frame";
+import type {NavigationUser,NavigationKey} from "@/lib/account-navigation";
+
+import {clientFetch, responseJson} from '@/lib/client-fetch';
 import { useState, useEffect, useCallback, useRef } from "react";
-import NotificationLink from "./notification-link";
-import {
-  BookOpen,
-  Code2,
-  CalendarDays,
-  MessageCircle,
-  Settings2,
-  Check,
-  LockKeyhole,
-  CirclePlay,
-  PanelLeft,
-  X,
-  Layers3,
-  CircuitBoard,
-  Clock3,
-  CheckCircle2,
-  Send,
-  MapPin,
-  Video,
-  Loader2,
-  Plus,
-  RefreshCw,
-  LogOut,
-  ChevronDown,
-  LayoutDashboard,
-} from "lucide-react";
+import Link from "next/link";
+import {useRouter} from "next/navigation";
+import {browserModelContext, type BrowserTool} from "@/lib/browser-tools";
+import type {gradeQuiz} from "@/lib/rules";
+type QuizResult = ReturnType<typeof gradeQuiz>;
+type HistoryAttempt = {id:string;kind:string;state:string;score:number|null;createdAt:string};
+type CodeResult = {id:string;state:string;passed?:boolean;score?:number;error?:string;tests?:{index:number;passed:boolean;hidden:boolean;status:string;stderr?:string;compileOutput?:string}[]};
+import { canConfirmLessonCompletion } from "../lib/graduation";
+import { BookOpen, Code2, CalendarDays, MessageCircle, Check, LockKeyhole, CirclePlay, PanelLeft, X, CircuitBoard, Clock3, CheckCircle2, Send, MapPin, Video, Loader2, RefreshCw } from "lucide-react";
+
+import RenderBlock from "./lesson-block";
 import type {
   State,
   PublicCourse,
@@ -33,13 +23,24 @@ import type {
   Progress,
   Session,
   Discussion,
-  Block,
 } from "@/lib/model";
 import Admin from "./admin";
 import { CourseCertificate } from "./certificates-panel";
 import BrowserPractice from "./browser-practice";
-export async function api(path = "/api/studio", body?: unknown) {
-  const r = await fetch(
+const retryRequests=new Map<string,string>();
+export async function api<T = State>(path = "/api/studio", body?: unknown) {
+  let retryKey:string|undefined;
+  const q=new URLSearchParams(location.search);
+  if(path.startsWith("/api/studio?")&&q.get("class")&&!path.includes("class="))path+="&class="+encodeURIComponent(q.get("class")!);
+  if(body&&typeof body==="object"&&"action" in body&&["complete","quiz","code","message"].includes(String(body.action))){
+    body={...body,classId:q.get("class")||null};
+    if(["complete","quiz"].includes(String((body as {action:string}).action))){
+      retryKey=path+JSON.stringify(body);
+      const requestId=retryRequests.get(retryKey)||crypto.randomUUID();retryRequests.set(retryKey,requestId);
+      body={...(body as Record<string,unknown>),requestId};
+    }
+  }
+  const r = await clientFetch(
     path,
     body
       ? {
@@ -49,11 +50,8 @@ export async function api(path = "/api/studio", body?: unknown) {
         }
       : { cache: "no-store" },
   );
-  const d: any = await r.json();
-  if (!r.ok)
-    throw Object.assign(new Error(d.error || "Permintaan gagal."), {
-      status: r.status,
-    });
+  const d = await responseJson<T>(r, !!body);
+  if(retryKey)retryRequests.delete(retryKey);
   return d;
 }
 export function localDate(value: string) {
@@ -65,13 +63,16 @@ export function localDate(value: string) {
     }).format(new Date(value)) + " WIB"
   );
 }
-export default function Studio() {
+export default function Studio({navigation,initialView="learn"}:{navigation:NavigationUser;initialView?:string}) {
+  const router = useRouter();
+  const [clock,setClock] = useState(() => Date.now());
+  useEffect(() => {const timer=setInterval(()=>setClock(Date.now()),30000);return()=>clearInterval(timer);},[]);
   const outlineToggle = useRef<HTMLButtonElement>(null);
   const outlineClose = useRef<HTMLButtonElement>(null);
   const [state, setState] = useState<State | null>(null),
     [failure, setFailure] = useState(""),
     [signIn, setSignIn] = useState(false),
-    [view, setView] = useState("learn"),
+    [view, setView] = useState(initialView),
     [adminDirty, setAdminDirty] = useState(false),
     [courseId, setCourseId] = useState(""),
     [lessonId, setLessonId] = useState(""),
@@ -80,29 +81,39 @@ export default function Studio() {
     [notice, setNotice] = useState("");
   const load = useCallback(async () => {
     try {
-      const data = await api();
+      const admin=new URLSearchParams(location.search).get("view")==="admin";
+      const query=new URLSearchParams(location.search);
+      const params=new URLSearchParams();for(const key of ["course","class"])if(query.get(key))params.set(key,query.get(key)!);
+      const result=await api(admin?"/api/studio?admin=1":"/api/studio"+(params.size?"?"+params.toString():""));
+      if(!admin){const c=result.courses.find((c:PublicCourse)=>c.id===query.get("course"))||result.courses[0];if(c){query.set("course",c.id);if(c.graduation?.classId)query.set("class",c.graduation.classId);else query.delete("class");history.replaceState(null,"","/learn?"+query.toString());}}
+      const data=admin?{user:result.user,curriculum:true,courses:[],progress:{},sessions:[],judgeReady:result.judgeReady}:result;
       setState(data);
       setFailure("");
       setSignIn(false);
-    } catch (e: any) {
+    } catch (cause) {
+      const e = cause as Error & {status?: number};
       setFailure(e.message);
       setSignIn(e.status === 401);
     }
   }, []);
   useEffect(() => {
+    const startup=setTimeout(() => {
     void load();
     const q = new URLSearchParams(location.search);
     setCourseId(q.get("course") || "");
     setLessonId(q.get("lesson") || "");
     if (q.get("view") === "sessions" || q.get("view") === "admin")
       setView(q.get("view")!);
+    },0);
+    return()=>clearTimeout(startup);
   }, [load]);
   useEffect(() => {
     if (!mobile) return;
+    const toggle=outlineToggle.current;
     outlineClose.current?.focus();
     const close = (e: KeyboardEvent) => { if (e.key === "Escape") setMobile(false); };
     window.addEventListener("keydown", close);
-    return () => { window.removeEventListener("keydown", close); outlineToggle.current?.focus(); };
+    return () => { window.removeEventListener("keydown", close); toggle?.focus(); };
   }, [mobile]);
   const course =
     state?.courses.find((c) => c.id === courseId) || state?.courses[0];
@@ -117,6 +128,8 @@ export default function Studio() {
   function updateLocation(nextView: string, nextCourse = course?.id, nextLesson = lesson?.id) {
     const query = new URLSearchParams();
     if (nextCourse) query.set("course", nextCourse);
+    const classId=nextCourse===course?.id?course?.graduation?.classId:null;
+    if(classId)query.set("class",classId);
     if (nextLesson) query.set("lesson", nextLesson);
     if (nextView !== "learn") query.set("view", nextView);
     history.replaceState(null, "", `/learn${query.size ? "?" + query.toString() : ""}`);
@@ -132,7 +145,7 @@ export default function Studio() {
   const selectLesson = (l: PublicLesson) => {
     setNotice("");
     if (l.locked) {
-      setNotice(`Lulus tes pada “${l.blocker}” untuk membuka materi ini.`);
+      setNotice(l.blocker||"Selesaikan seluruh syarat materi sebelumnya.");
       return;
     }
     setLessonId(l.id);
@@ -143,12 +156,12 @@ export default function Studio() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const toolsState = useRef({ state, course, lesson, view, selectLesson });
-  toolsState.current = { state, course, lesson, view, selectLesson };
+  useEffect(() => { toolsState.current = {state,course,lesson,view,selectLesson}; });
   useEffect(() => {
-    const ctx = (document as any).modelContext;
+    const ctx = browserModelContext();
     if (!ctx?.registerTool) return;
     const lifecycle = new AbortController();
-    const register = (tool: any) =>
+    const register = (tool: BrowserTool) =>
       Promise.resolve(
         ctx.registerTool(tool, { signal: lifecycle.signal }),
       ).catch(() => {});
@@ -188,7 +201,7 @@ export default function Studio() {
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
-      execute: (input: any) => {
+      execute: (input?: Record<string, unknown>) => {
         const l = toolsState.current.course?.lessons.find(
           (l) => l.id === input?.lessonId,
         );
@@ -200,81 +213,37 @@ export default function Studio() {
     });
     return () => lifecycle.abort();
   }, []);
-  const done =
-    course?.lessons.filter((l) =>
-      progress.some(
-        (p) => p.lessonId === l.id && p.revision === l.revision && p.complete,
-      ),
-    ).length || 0;
+  const done=course?.graduation?.lessons.filter(l=>l.stagePassed).length||0;
   const percent = course?.lessons.length
     ? Math.round((done / course.lessons.length) * 100)
     : 0;
+  const {guard: guardNavigation,dialog: leaveDialog} = useUnsavedNavigation(adminDirty,()=>setAdminDirty(false),"Perubahan course belum tersimpan. Tetap di halaman untuk menyimpan atau lanjutkan tanpa perubahan ini.");
+  const Frame = initialView === "admin" || initialView === "sessions" ? AccountFrame : StudyFrame;
   return (
-    <div className="studio">
-      <header className="topbar">
-        <a className="brand" href="/">
-          <span className="brand-mark">
-            <Layers3 size={23} />
-          </span>
-          <strong>
-            Ruang<span> STEM</span>
-          </strong>
-        </a>
-        <nav aria-label="Navigasi ruang belajar">
-          <a href="/curriculum" onClick={event=>{if(adminDirty&&!confirm("Abaikan perubahan course yang belum disimpan?"))event.preventDefault();}}>Tim Kurikulum</a>
-          <a className="studio-dashboard" href="/dashboard" onClick={(event) => {
-            if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
-          }}><LayoutDashboard size={17} /><span>Dashboard</span></a>
-          {[
-            ["learn", "Ruang belajar", BookOpen],
-            ["sessions", "Sesi Tutor", CalendarDays],
-            ...(state?.user.role === "owner"
-              ? [["admin", "Kelola course", Settings2]]
-              : []),
-          ].map(([key, label, Icon]: any) => (
-            <button
-              key={key}
-              aria-label={label}
-              aria-pressed={view === key}
-              className={view === key ? "active" : ""}
-              onClick={() => navigateView(key)}
-            >
-              <Icon size={17} />
-              {label}
-            </button>
-          ))}
-        </nav>
-        {state && <NotificationLink onClick={(event) => {
-          if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
-        }} />}
-        <a className="icon-button studio-logout" href="/logout" onClick={(event) => {
-          if (adminDirty && !confirm("Abaikan perubahan course yang belum disimpan?")) event.preventDefault();
-        }}><LogOut size={16} /><span>Keluar</span></a>
-      </header>
+    <Frame user={navigation} current={view === "admin" ? "admin" : view === "sessions" ? "sessions" : "learn"} onNavigate={guardNavigation} mainTag="div">
+      {leaveDialog}
       {!state ? (
         <main className="welcome">
           <div className="mentor-icon">
             <BookOpen size={25} />
           </div>
-          <span className="eyebrow teal">RUANG BELAJAR STEM</span>
+          <span className="eyebrow teal">{initialView === "admin" ? "PENGELOLAAN COURSE" : "RUANG BELAJAR STEM"}</span>
           <h1>
-            Bangun pemahaman.
-            <br />
-            Wujudkan lewat praktik.
+            {initialView === "admin" ? "Menyiapkan pengelolaan course" : "Menyiapkan ruang belajar"}
           </h1>
           <p>
             {signIn
               ? "Masuk untuk membuka materi, menyimpan progres, dan berdiskusi dengan mentor."
-              : failure || "Menyiapkan ruang belajar Anda…"}
+              : failure || "Memuat data sesuai akses akun Anda…"}
           </p>
           {signIn ? (
-            <a
+            <Link
               className="primary button-link"
               href={`/login?return_to=${encodeURIComponent("/learn" + (typeof location !== "undefined" ? location.search : ""))}`}
               target="_top"
             >
               Masuk ke akun
-            </a>
+            </Link>
           ) : failure ? (
             <button className="secondary" onClick={load}>
               <RefreshCw size={17} />
@@ -288,13 +257,7 @@ export default function Studio() {
         <Admin
           reload={load}
           onDirtyChange={setAdminDirty}
-          onPreview={(c, l) => {
-            setCourseId(c);
-            setLessonId(l);
-            setView("learn");
-            setAdminDirty(false);
-            updateLocation("learn", c, l);
-          }}
+          onPreview={(c) => {setAdminDirty(false);router.push('/preview?course='+encodeURIComponent(c));}}
         />
       ) : view === "sessions" ? (
         <main className="full-page">
@@ -303,6 +266,7 @@ export default function Studio() {
           <p>Ruang untuk bertanya, membahas proyek, dan berlatih bersama.</p>
           <SessionList
             sessions={state.sessions}
+            classSessions={state.classSessions || []}
             courses={state.courses}
             refresh={load}
           />
@@ -310,14 +274,15 @@ export default function Studio() {
       ) : !course ? (
         <main className="welcome">
           <BookOpen size={36} />
-          <h1>Course pertama sedang disiapkan</h1>
-          <p>Materi akan muncul di sini setelah diterbitkan pengajar.</p>
+          <h1>{state.user.role === "owner" ? "Course pertama sedang disiapkan" : "Belum ada course yang Anda ikuti"}</h1>
+          <p>{state.user.role === "owner" ? "Materi akan muncul di sini setelah diterbitkan pengajar." : "Pilih dan daftar course melalui katalog untuk mulai belajar."}</p>
+          {state.user.role !== "owner" && <Link className="primary" href="/courses">Jelajahi course</Link>}
           {state.user.role === "owner" && (
             <button className="primary" onClick={() => navigateView("admin")}>
               Buat course
             </button>
           )}
-          <a className="secondary button-link" href="/courses">Jelajahi course</a>
+          <Link className="secondary button-link" href="/courses">Jelajahi course</Link>
         </main>
       ) : (
         <div className="workspace">
@@ -335,6 +300,7 @@ export default function Studio() {
                   setLessonId("");
                   setDiscussion(false);
                   updateLocation("learn", e.target.value, "");
+                  void load();
                 }}
               >
                 {state.courses.map((c) => (
@@ -347,16 +313,18 @@ export default function Studio() {
             ) : (
               <h2>{course.title}</h2>
             )}
+            {!!course.graduation?.classes.length&&<label className="field"><span>Kelas belajar</span><select aria-label="Pilih kelas belajar" value={course.graduation.classId||""} onChange={e=>{const q=new URLSearchParams(location.search);if(e.target.value)q.set("class",e.target.value);else q.delete("class");history.replaceState(null,"","/learn?"+q.toString());setState(null);void load();}}><option value="">Pilih kelas</option>{course.graduation.classes.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>}
+            {course.graduation?.problem&&<p role="status">{course.graduation.problem.message}</p>}
             <div className="progress-caption">
               <span>
-                {done} dari {course.lessons.length} materi selesai
+                {done} dari {course.lessons.length} tahap lulus
               </span>
               <b>{percent}%</b>
             </div>
             <div className="progress">
               <span style={{ width: percent + "%" }} />
             </div>
-            <CourseCertificate key={`${course.id}-${course.version}-${done}`} courseId={course.id} />
+            <CourseCertificate key={`${course.id}-${course.version}-${done}-${course.graduation?.classId || ""}`} courseId={course.id} classId={course.graduation?.classId} />
             <div className="outline-label">
               KURIKULUM <span>{course.level}</span>
             </div>
@@ -372,12 +340,7 @@ export default function Studio() {
                 >
                   {l.locked ? (
                     <LockKeyhole size={17} />
-                  ) : progress.some(
-                      (p) =>
-                        p.lessonId === l.id &&
-                        p.revision === l.revision &&
-                        p.complete,
-                    ) ? (
+                  ) : l.graduation?.stagePassed ? (
                     <CheckCircle2 size={17} />
                   ) : l.exercise ? (
                     <Code2 size={17} />
@@ -451,7 +414,7 @@ export default function Studio() {
                     {p?.complete === 1 && (
                       <span className="pill">
                         <Check size={13} />
-                        Selesai
+                        Aktivitas selesai
                       </span>
                     )}
                   </div>
@@ -464,6 +427,8 @@ export default function Studio() {
                     </button>
                     <button
                       className={discussion ? "active" : ""}
+                      disabled={lesson.locked}
+                      title={lesson.locked ? "Selesaikan prasyarat atau minta bantuan melalui diskusi kelas." : undefined}
                       onClick={() => setDiscussion(true)}
                     >
                       <MessageCircle size={15} />
@@ -474,7 +439,9 @@ export default function Studio() {
                     <div className="empty">
                       <LockKeyhole size={30} />
                       <h2>Materi masih terkunci</h2>
-                      <p>Lulus tes pada {lesson.blocker} terlebih dahulu.</p>
+                      <p>{lesson.blocker||"Selesaikan seluruh syarat materi sebelumnya."}</p>
+                      <p>Diskusi materi terbuka setelah prasyarat terpenuhi. Untuk kendala, mintalah bantuan melalui diskusi kelas.</p>
+                      <Link className="secondary button-link" href={course.graduation?.classId ? `/classes?class=${encodeURIComponent(course.graduation.classId)}` : "/classes"}>Buka diskusi kelas</Link>
                     </div>
                   ) : discussion ? (
                     <DiscussionPanel
@@ -486,11 +453,11 @@ export default function Studio() {
                     <>
                       {lesson.blocks.length ? (
                         lesson.blocks.map((b) => (
-                          <RenderBlock key={b.id} block={b} />
+                          <RenderBlock key={b.id} block={b} classId={course.graduation?.classId} />
                         ))
                       ) : (
                         <div className="empty">
-                          Pengajar sedang menyiapkan isi materi.
+                          {lesson.graduation?.requiredReviews.length?"Kerjakan tugas praktik melalui tautan Buka tugas di bawah.":"Pengajar sedang menyiapkan isi materi."}
                         </div>
                       )}
                       {lesson.quiz && (
@@ -512,6 +479,11 @@ export default function Studio() {
                           refresh={load}
                         />
                       )}
+                      {(lesson.quiz || lesson.exercise) && <AssessmentHistory
+                        key={course.id + lesson.id + lesson.revision}
+                        courseId={course.id} lessonId={lesson.id}
+                        refreshKey={`${p?.quizAttempts || 0}:${p?.codeAttempts || 0}:${p?.version || 0}`}
+                      />}
                       <Completion
                         course={course}
                         lesson={lesson}
@@ -534,21 +506,21 @@ export default function Studio() {
                     </div>
                     <h3>Ada yang belum jelas?</h3>
                     <p>Diskusikan konsep dan kendala praktik bersama mentor.</p>
-                    <button
+                    {lesson.locked ? <Link className="secondary button-link" href={course.graduation?.classId ? `/classes?class=${encodeURIComponent(course.graduation.classId)}` : "/classes"}>Buka diskusi kelas</Link> : <button
                       className="secondary"
                       onClick={() => setDiscussion(true)}
                     >
                       Buka diskusi
-                    </button>
+                    </button>}
                   </div>
                   <div className="context-card quiet">
                     <CalendarDays size={22} />
                     <h3>Temui mentor Anda</h3>
                     <p>
-                      {state.sessions.find(
+                      {state.classSessions?.find(s => s.courseId === course.id && (!course.graduation?.classId || s.classId === course.graduation.classId) && Date.parse(s.startsAt) + s.duration * 60000 > clock)?.title || state.sessions.find(
                         (s) =>
                           s.courseId === course.id &&
-                          Date.parse(s.startsAt) > Date.now(),
+                          Date.parse(s.startsAt) > clock,
                       )?.title ||
                         "Sesi live dan tatap muka akan tampil setelah dijadwalkan pengajar."}
                     </p>
@@ -565,107 +537,19 @@ export default function Studio() {
               <div className="empty">
                 <h2>Belum ada materi</h2>
                 <p>{state.user.role === "owner" ? "Tambahkan materi pertama dari Kelola course." : "Materi course ini sedang disiapkan oleh pengajar."}</p>
-                {state.user.role === "owner" ? <button className="primary" type="button" onClick={() => navigateView("admin")}>Kelola course</button> : <a className="secondary button-link" href="/courses">Jelajahi course lain</a>}
+                {state.user.role === "owner" ? <button className="primary" type="button" onClick={() => navigateView("admin")}>Kelola course</button> : <Link className="secondary button-link" href="/courses">Jelajahi course lain</Link>}
               </div>
             )}
           </main>
         </div>
       )}
-    </div>
+    </Frame>
   );
 }
-function RenderBlock({ block: b }: { block: Block }) {
-  if (b.type === "heading")
-    return <h2 className="block-heading">{b.content}</h2>;
-  if (b.type === "callout")
-    return <div className="intro-note">{b.content}</div>;
-  if (b.type === "code")
-    return (
-      <pre className="code-block">
-        <code>{b.content}</code>
-      </pre>
-    );
-  if (b.type === "file")
-    return b.content ? <p><a className="secondary" href={b.content + "?download=1"}>Unduh {b.caption || "dokumen materi"}</a></p> : null;
-  if (b.type === "image")
-    return b.content ? (
-      <figure>
-        <img
-          className="lesson-image"
-          src={b.content}
-          alt={b.caption || "Diagram materi"}
-          loading="lazy"
-        />
-        {b.caption && <figcaption>{b.caption}</figcaption>}
-      </figure>
-    ) : null;
-  if (b.type === "video") {
-    if (!b.content)
-      return (
-        <div className="empty">
-          <Video size={25} />
-          <p>Video belum ditambahkan pengajar.</p>
-        </div>
-      );
-    let embed = "";
-    try {
-      const u = new URL(b.content);
-      if (["www.youtube.com", "youtube.com", "youtu.be"].includes(u.hostname)) {
-        const id =
-          u.hostname === "youtu.be"
-            ? u.pathname.slice(1)
-            : u.searchParams.get("v") || u.pathname.split("/").pop();
-        if (id && /^[\w-]{11}$/.test(id))
-          embed = `https://www.youtube-nocookie.com/embed/${id}`;
-      }
-      if (
-        ["vimeo.com", "www.vimeo.com"].includes(u.hostname) &&
-        /^\/\d+$/.test(u.pathname)
-      )
-        embed = "https://player.vimeo.com/video" + u.pathname;
-    } catch {}
-    return (
-      <figure>
-        {embed ? (
-          <iframe
-            className="video"
-            src={embed}
-            title={b.caption || "Video penjelasan"}
-            allow="fullscreen; picture-in-picture"
-            allowFullScreen
-          />
-        ) : (
-          <video className="video" controls preload="metadata" src={b.content}>
-            Browser Anda tidak mendukung video.
-          </video>
-        )}
-        {b.caption && <figcaption>{b.caption}</figcaption>}
-      </figure>
-    );
-  }
-  if (b.type === "diagram") {
-    const labels = b.content.split("|").slice(0, 3);
-    return (
-      <div className="system-diagram">
-        {labels.map((label, i) => (
-          <div key={i} className={i === 1 ? "featured" : ""}>
-            <span>0{i + 1}</span>
-            {i === 1 && <CircuitBoard size={30} />}
-            <b>{label}</b>
-            <small>{["Masukan", "Pemrosesan", "Keluaran"][i]}</small>
-          </div>
-        ))}
-      </div>
-    );
-  }
-  return (
-    <div className="rich-text">
-      {b.content.split("\n\n").map((p, i) => (
-        <p key={i}>{p}</p>
-      ))}
-    </div>
-  );
+function StudyFrame({user,current,onNavigate,children}:{user:NavigationUser;current:NavigationKey;onNavigate?:React.MouseEventHandler<HTMLAnchorElement>;children:React.ReactNode;mainTag?:string}) {
+  return <div className="studio study-frame"><a className="account-skip" href="#study-main">Lewati ke konten</a><AccountHeader user={user} onNavigate={onNavigate}/><AccountMenu user={user} current={current} onNavigate={onNavigate} compact/><div id="study-main" tabIndex={-1}>{children}</div></div>;
 }
+
 function QuizPanel({
   courseId,
   lesson,
@@ -679,7 +563,7 @@ function QuizPanel({
 }) {
   const q = lesson.quiz!;
   const [answers, setAnswers] = useState<Record<string, number[]>>({}),
-    [result, setResult] = useState<any>(null),
+    [result, setResult] = useState<QuizResult | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
   const capped =
@@ -689,15 +573,17 @@ function QuizPanel({
     setError("");
     try {
       setResult(
-        await api("/api/studio", {
+        await api<QuizResult>("/api/studio", {
           action: "quiz",
           courseId,
           lessonId: lesson.id,
+        revision:lesson.revision,
           answers,
         }),
       );
       await refresh();
-    } catch (e: any) {
+    } catch (cause) {
+      const e = cause as Error & {status?: number};
       setError(e.message);
     } finally {
       setBusy(false);
@@ -766,7 +652,7 @@ function QuizPanel({
             Nilai {result.score} / 100 ·{" "}
             {result.passed ? "Lulus" : "Belum lulus"}
           </strong>
-          {result.feedback.map((r: any, i: number) => (
+          {result.feedback.map((r, i) => (
             <p key={r.id}>
               {i + 1}. {r.correct ? "Benar." : "Perlu ditinjau."}{" "}
               {r.explanation}
@@ -821,26 +707,24 @@ function CodePanel({
   const ex = lesson.exercise!;
   const [source, setSource] = useState(ex.starter),
     [busy, setBusy] = useState(false),
-    [result, setResult] = useState<any>(null),
+    [result, setResult] = useState<CodeResult | null>(null),
     [error, setError] = useState(""),
-    [attempt, setAttempt] = useState(""),
-    [history, setHistory] = useState<any[]>([]);
+    [attempt, setAttempt] = useState("");
   const requestId = useRef(crypto.randomUUID());
   const getHistory = useCallback(async () => {
     try {
-      const d = await api(
+      const d = await api<{attempts:HistoryAttempt[]}>(
         `/api/studio?history=${courseId}&lesson=${lesson.id}`,
       );
-      setHistory(d.attempts);
       const pending = d.attempts.find(
-        (a: any) =>
+        (a) =>
           a.kind === "code" && ["pending", "submitting"].includes(a.state),
       );
       if (pending) setAttempt(pending.id);
     } catch {}
   }, [courseId, lesson.id]);
   useEffect(() => {
-    void getHistory();
+    const startup=setTimeout(getHistory,0);return()=>clearTimeout(startup);
   }, [getHistory]);
   useEffect(() => {
     if (!attempt) return;
@@ -848,7 +732,7 @@ function CodePanel({
     let timer: ReturnType<typeof setTimeout>;
     async function poll() {
       try {
-        const r = await api(
+        const r = await api<CodeResult>(
           "/api/studio?attempt=" + encodeURIComponent(attempt),
         );
         if (stopped) return;
@@ -862,7 +746,8 @@ function CodePanel({
         setBusy(false);
         await refresh();
         await getHistory();
-      } catch (e: any) {
+      } catch (cause) {
+      const e = cause as Error & {status?: number};
         if (!stopped) {
           setError(e.message);
           setBusy(false);
@@ -881,15 +766,17 @@ function CodePanel({
     setError("");
     setResult(null);
     try {
-      const r = await api("/api/studio", {
+      const r = await api<{id:string}>("/api/studio", {
         action: "code",
         courseId,
         lessonId: lesson.id,
+        revision:lesson.revision,
         source,
         requestId: requestId.current,
       });
       setAttempt(r.id);
-    } catch (e: any) {
+    } catch (cause) {
+      const e = cause as Error & {status?: number};
       setError(e.message);
       if (e.status && e.status < 500) requestId.current = crypto.randomUUID();
       setBusy(false);
@@ -943,7 +830,9 @@ function CodePanel({
             const t = e.currentTarget,
               a = t.selectionStart,
               b = t.selectionEnd;
+            if(source.length-(b-a)+4>20000)return;
             setSource(source.slice(0, a) + "    " + source.slice(b));
+            requestId.current = crypto.randomUUID();
             requestAnimationFrame(() => {
               t.selectionStart = t.selectionEnd = a + 4;
             });
@@ -977,9 +866,9 @@ function CodePanel({
       <BrowserPractice exercise={ex} source={source} />
       {!ready && (
         <div className="feedback warning">
-          Penilaian resmi di server belum diaktifkan. Gunakan latihan browser
-          untuk mencoba contoh. Tes coding wajib tetap menunggu pemeriksa server
-          atau review mentor.
+          Penilaian kode resmi sementara belum tersedia. Gunakan latihan browser
+          untuk mencoba contoh; hasilnya tidak memberi nilai kelulusan.
+          {ex.required&&" Tes coding wajib harus lulus melalui penilaian resmi sebelum tahap bisa diselesaikan."}
         </div>
       )}
       {error && (
@@ -996,7 +885,7 @@ function CodePanel({
             {result.error ||
               `Nilai ${result.score} / 100 · ${result.passed ? "Semua pengujian lulus" : "Solusi perlu diperbaiki"}`}
           </strong>
-          {result.tests?.map((t: any) => (
+          {result.tests?.map((t) => (
             <div key={t.index} className="test-result">
               <span>
                 {t.passed ? "✓" : "×"} Test {t.index}
@@ -1009,22 +898,33 @@ function CodePanel({
           ))}
         </div>
       )}
-      {history.length > 0 && (
-        <details className="history">
-          <summary>Riwayat percobaan ({history.length} terakhir)</summary>
-          {history.map((h) => (
-            <div className="row spread" key={h.id}>
-              <span>{localDate(h.createdAt)}</span>
-              <span>
-                {h.kind === "quiz" ? "Kuis" : "Kode"} ·{" "}
-                {h.state === "finished" ? h.score + "/100" : h.state}
-              </span>
-            </div>
-          ))}
-        </details>
-      )}
+
     </section>
   );
+}
+function AssessmentHistory({courseId, lessonId, refreshKey}: {courseId: string; lessonId: string; refreshKey: string}) {
+  const [attempts, setAttempts] = useState<HistoryAttempt[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    let live = true;
+    const startup = setTimeout(() => {
+      setLoading(true);
+      void api<{attempts: HistoryAttempt[]}>(`/api/studio?history=${encodeURIComponent(courseId)}&lesson=${encodeURIComponent(lessonId)}`)
+        .then(data => { if (live) { setAttempts(data.attempts); setError(""); } })
+        .catch(cause => { if (live) { setAttempts([]); setError(cause instanceof Error ? cause.message : "Riwayat belum dapat dimuat."); } })
+        .finally(() => { if (live) setLoading(false); });
+    }, 0);
+    return () => { live = false; clearTimeout(startup); };
+  }, [courseId, lessonId, refreshKey, retry]);
+  return <section className="assessment">
+    <h2>Riwayat penilaian</h2>
+    {loading ? <p role="status">Memperbarui riwayat…</p> : error ? <div role="alert"><p>{error}</p><button className="secondary" onClick={() => setRetry(value => value + 1)}>Muat ulang riwayat</button></div> : !attempts.length ? <p>Belum ada percobaan penilaian.</p> : <details className="history" open>
+      <summary>Riwayat percobaan ({attempts.length} terakhir)</summary>
+      {attempts.map(attempt => <div className="row spread" key={attempt.id}><span>{localDate(attempt.createdAt)}</span><span>{attempt.kind === "quiz" ? "Kuis" : "Kode"} · {attempt.state === "finished" ? `${attempt.score ?? "—"}/100` : attempt.state === "pending" || attempt.state === "submitting" ? "Sedang diperiksa" : attempt.state}</span></div>)}
+    </details>}
+  </section>;
 }
 function Completion({
   course,
@@ -1041,24 +941,22 @@ function Completion({
 }) {
   const [busy, setBusy] = useState(false),
     [error, setError] = useState("");
-  const blocked =
-    (lesson.quiz?.mode === "required" && !progress?.quizPassed) ||
-    (lesson.exercise?.required && !progress?.codePassed);
+  const blocked = !canConfirmLessonCompletion(lesson.graduation);
   return (
     <>
+      {lesson.graduation&&<section aria-label="Syarat kelulusan materi" className="context-card"><h3>{lesson.graduation.stagePassed?"Materi lulus":"Syarat kelulusan"}</h3>{lesson.graduation.requiredReviews.map(r=><p key={r.id}>{r.title} · {r.score===null?"Belum dinilai":`Nilai ${r.score}/100 (minimal ${r.minimumScore})`} · {r.passed?"Lulus":r.status==="submitted"?"Menunggu review":r.status==="stale"?"Perlu dikerjakan ulang":"Belum lulus"}{r.assignmentId&&course.graduation?.classId&&<> · <Link href={`/classes?class=${encodeURIComponent(course.graduation.classId)}&task=${encodeURIComponent(r.assignmentId)}`}>Buka tugas</Link></>}</p>)}{lesson.graduation.blockers.map((b,i)=><p key={b.code+i}>{b.message}</p>)}</section>}
       <div className="lesson-footer">
         <span>
           {blocked
-            ? "Selesaikan tes wajib untuk melanjutkan."
+            ? "Penuhi seluruh syarat kelulusan di atas sebelum menandai tahap selesai."
             : progress?.complete
-              ? "Materi telah diselesaikan."
+              ? lesson.graduation?.stagePassed?"Tahap ini telah lulus.":"Aktivitas selesai; penuhi syarat kelulusan di atas."
               : "Siap untuk langkah berikutnya?"}
         </span>
         <div className="row">
-          {!progress?.complete && (
             <button
               className="primary"
-              disabled={!!blocked || busy}
+              disabled={blocked || busy || !!progress?.complete}
               onClick={async () => {
                 setBusy(true);
                 setError("");
@@ -1067,9 +965,11 @@ function Completion({
                     action: "complete",
                     courseId: course.id,
                     lessonId: lesson.id,
+        revision:lesson.revision,
                   });
                   await refresh();
-                } catch (e: any) {
+                } catch (cause) {
+      const e = cause as Error & {status?: number};
                   setError(e.message);
                 } finally {
                   setBusy(false);
@@ -1077,11 +977,10 @@ function Completion({
               }}
             >
               <Check size={16} />
-              Tandai selesai
+              {lesson.graduation?.stagePassed ? "Tahap lulus" : progress?.complete ? "Aktivitas tercatat" : "Tandai selesai"}
             </button>
-          )}
           {course.lessons.indexOf(lesson) < course.lessons.length - 1 && (
-            <button className="secondary" disabled={!!blocked} onClick={next}>
+            <button className="secondary" disabled={!!blocked||!lesson.graduation?.stagePassed} onClick={next}>
               Selanjutnya
             </button>
           )}
@@ -1107,21 +1006,23 @@ export function DiscussionPanel({
     [reply, setReply] = useState<Discussion | null>(null),
     [busy, setBusy] = useState(false),
     [error, setError] = useState("");
+  const posting = useRef(false);
   const load = useCallback(async () => {
     try {
-      const d = await api(
+      const d = await api<{messages:Discussion[]}>(
         `/api/studio?discussion=${courseId}&lesson=${lessonId}`,
       );
       setMessages(d.messages);
       setError("");
-    } catch (e: any) {
+    } catch (cause) {
+      const e = cause as Error & {status?: number};
       setError(e.message);
     }
   }, [courseId, lessonId]);
   useEffect(() => {
-    void load();
+    const startup=setTimeout(load,0);
     const id = setInterval(load, 15000);
-    return () => clearInterval(id);
+    return () => {clearTimeout(startup);clearInterval(id);};
   }, [load]);
   return (
     <section className="discussion">
@@ -1170,6 +1071,8 @@ export function DiscussionPanel({
       <form
         onSubmit={async (e) => {
           e.preventDefault();
+          if (posting.current) return;
+          posting.current = true;
           setBusy(true);
           setError("");
           try {
@@ -1183,9 +1086,11 @@ export function DiscussionPanel({
             setBody("");
             setReply(null);
             await load();
-          } catch (e: any) {
+          } catch (cause) {
+      const e = cause as Error & {status?: number};
             setError(e.message);
           } finally {
+            posting.current = false;
             setBusy(false);
           }
         }}
@@ -1223,13 +1128,17 @@ export function DiscussionPanel({
 }
 function SessionList({
   sessions,
+  classSessions,
   courses,
   refresh,
 }: {
   sessions: Session[];
+  classSessions: NonNullable<State["classSessions"]>;
   courses: PublicCourse[];
   refresh: () => Promise<void>;
 }) {
+  const [clock,setClock]=useState(()=>Date.now());
+  useEffect(()=>{const timer=setInterval(()=>setClock(Date.now()),30000);return()=>clearInterval(timer);},[]);
   const [error, setError] = useState(""),
     [busy, setBusy] = useState("");
   return (
@@ -1239,6 +1148,20 @@ function SessionList({
           {error}
         </div>
       )}
+      <h2>Jadwal kelas saya</h2>
+      <p className="small muted">Jadwal dari Tutor kelas Anda. Peserta kelas tidak perlu mendaftar sesi ulang.</p>
+      {!classSessions.length ? <p>Belum ada jadwal kelas mendatang. <Link href="/classes">Lihat kelas saya</Link></p> : <div className="session-grid">
+        {classSessions.map(session => <article className="session-card" key={session.id}>
+          <span className="pill">Sesi kelas · {session.kind === "online" ? "Live online" : "Tatap muka"}</span>
+          <p className="small muted">{session.courseTitle} · {session.className}</p><h3>{session.title}</h3>
+          <p>{localDate(session.startsAt)} · {session.duration} menit</p>
+          {session.kind === "offline" && <p>{session.location}</p>}
+          <Link className="secondary button-link" href={`/classes?class=${encodeURIComponent(session.classId)}`}>Buka kelas</Link>
+          {session.kind === "online" && session.url && <a className="secondary button-link" href={session.url} target="_blank" rel="noopener noreferrer">Buka meeting</a>}
+        </article>)}
+      </div>}
+      <h2>Sesi course yang dapat didaftarkan</h2>
+      <p className="small muted">Sesi tambahan di luar jadwal kelas. Gunakan Daftar sesi untuk mengikuti.</p>
       {!sessions.length ? (
         <div className="empty large">
           <CalendarDays size={38} />
@@ -1246,7 +1169,7 @@ function SessionList({
           <p>
             Jadwal live dan tatap muka akan muncul setelah ditambahkan pengajar.
           </p>
-          <a className="secondary button-link" href="/classes">Lihat kelas & Tutor</a>
+          <Link className="secondary button-link" href="/classes">Lihat kelas & Tutor</Link>
         </div>
       ) : (
         <div className="session-grid">
@@ -1279,7 +1202,7 @@ function SessionList({
                   <MapPin size={16} /> {s.location}
                 </p>
               )}
-              {Date.parse(s.startsAt) < Date.now() ? (
+              {Date.parse(s.startsAt) < clock ? (
                 <span className="muted">Sesi sudah dimulai / berakhir</span>
               ) : (
                 <button
@@ -1297,7 +1220,8 @@ function SessionList({
                         join: !s.joined,
                       });
                       await refresh();
-                    } catch (e: any) {
+                    } catch (cause) {
+      const e = cause as Error & {status?: number};
                       setError(e.message);
                     } finally {
                       setBusy("");
@@ -1312,14 +1236,14 @@ function SessionList({
                 </button>
               )}
               {!!s.joined && s.kind === "online" && (
-                <a
+                <Link
                   className="button-link secondary"
                   target="_blank"
                   rel="noopener noreferrer"
                   href={s.url}
                 >
                   Buka ruang meeting
-                </a>
+                </Link>
               )}
             </div>
           ))}

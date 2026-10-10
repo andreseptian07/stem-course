@@ -1,4 +1,5 @@
 import { readRequestText } from "@/lib/request-body";
+import { databaseFailureMessage } from "@/lib/database-failure";
 import { checkAuthOrigin } from "@/lib/auth-policy";
 import { z } from "zod";
 import { identity, db, json, AppError } from "@/lib/server";
@@ -17,7 +18,7 @@ function failure(e: unknown) {
   if (e instanceof z.ZodError)
     return json({ error: e.issues[0]?.message || "Isian tidak valid." }, 400);
   return json(
-    { error: "Tugas belum dapat diproses. Coba lagi; isian tetap tersedia." },
+    { error: databaseFailureMessage(e, "Tugas belum dapat diproses. Coba lagi; isian tetap tersedia.") },
     503,
   );
 }

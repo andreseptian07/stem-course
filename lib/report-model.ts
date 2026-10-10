@@ -1,5 +1,6 @@
 export type ReportDays = 7 | 30 | 90;
 export type ReportLearner = {
+  classResults?:{classId:string|null;className:string|null;completed:number;total:number;finished:boolean}[];
   userId: string;
   name: string;
   role: string;

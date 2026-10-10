@@ -1,3 +1,4 @@
+import {navigationUser} from "@/lib/account-navigation";
 import Classes from "../classroom";
 import { requirePlatformAccess } from "@/lib/browser-access";
 export const dynamic = "force-dynamic";
@@ -9,12 +10,12 @@ async function Protected({
   classId?: string;
   taskId?: string;
 }) {
-  await requirePlatformAccess(
+  const user = await requirePlatformAccess(
     classId
       ? `/classes?class=${encodeURIComponent(classId)}${taskId ? `&task=${encodeURIComponent(taskId)}` : ""}`
       : "/classes",
   );
-  return <Classes />;
+  return <Classes navigation={navigationUser(user)} />;
 }
 export default async function Page({
   searchParams,

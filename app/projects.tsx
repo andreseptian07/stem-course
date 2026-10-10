@@ -1,6 +1,12 @@
 "use client";
+import {clientFetch, responseJson} from '@/lib/client-fetch';
 import { useState, useEffect, useRef } from "react";
 import { ClipboardList, Plus, ArrowLeft, RefreshCw } from "lucide-react";
+import type {projectList, assignmentSchema} from "@/lib/projects";
+import type {z} from "zod";
+type ProjectsData = Awaited<ReturnType<typeof projectList>>;
+type AssignmentForm = Omit<z.infer<typeof assignmentSchema>,"dueAt"> & {dueAt:string};
+type ReviewForm = {id:string;version:number;status:"accepted"|"changes_requested";feedback:string;score:string};
 type ProjectFile = {
   id: string;
   assignmentId: string;
@@ -16,6 +22,11 @@ const labels: Record<string, string> = {
   submitted: "Menunggu review",
   accepted: "Diterima",
   changes_requested: "Perlu revisi",
+  stale:"Perlu mengerjakan revisi terbaru",
+  configuration_required:"Syarat tugas sedang disiapkan",
+};
+const projectHost = (url: string) => {
+  try { return new URL(url).hostname; } catch { return "Tautan tersimpan tidak valid"; }
 };
 const date = (s: string | null) =>
   s
@@ -42,8 +53,10 @@ const local = (s: string | null) => {
   );
   return `${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}`;
 };
+function api(classId: string): Promise<ProjectsData>;
+function api(classId: string, body: unknown): Promise<unknown>;
 async function api(classId: string, body?: unknown) {
-  const r = await fetch(
+  const r = await clientFetch(
     "/api/projects" + (!body ? "?class=" + encodeURIComponent(classId) : ""),
     body
       ? {
@@ -53,41 +66,42 @@ async function api(classId: string, body?: unknown) {
         }
       : { cache: "no-store" },
   );
-  const d: any = await r.json();
-  if (!r.ok)
-    throw Object.assign(new Error(d.error || "Permintaan belum berhasil."), {
-      status: r.status,
-    });
-  return d;
+  return responseJson<ProjectsData>(r, !!body);
 }
 export default function Projects({
   classId,
   userId,
   archived,
   isParticipant,
+  onChanged,
 }: {
   classId: string;
   userId: string;
   archived: boolean;
   isParticipant: boolean;
+  onChanged?:()=>Promise<void>;
 }) {
-  const [data, setData] = useState<any>(null),
+  const [data, setData] = useState<ProjectsData | null>(null),
     [selected, setSelected] = useState(""),
-    [form, setForm] = useState<any>(null),
+    [form, setForm] = useState<AssignmentForm | null>(null),
     [error, setError] = useState(""),
+    [backgroundError, setBackgroundError] = useState(""),
     [notice, setNotice] = useState(""),
     [busy, setBusy] = useState(false),
     [answer, setAnswer] = useState(""),
     [url, setUrl] = useState(""),
-    [review, setReview] = useState<any>(null);
+    [review, setReview] = useState<ReviewForm | null>(null);
   const dirty = useRef(false);
-  const task = data?.tasks.find((t: any) => t.id === selected),
+  const mutationInFlight = useRef(false);
+  const retry=useRef<{key:string;id:string}|null>(null);
+  const task = data?.tasks.find((t) => t.id === selected),
     staff = !!data?.staff;
+  const requiredReview = data?.graduation?.lessons.flatMap(l => l.requiredReviews).find(r => r.assignmentId === selected);
   const history =
-    data?.submissions.filter((s: any) => s.assignmentId === selected) || [];
+    data?.submissions.filter((s) => s.assignmentId === selected) || [];
   const own = history
-      .filter((s: any) => s.studentId === userId)
-      .sort((a: any, b: any) => b.attempt - a.attempt),
+      .filter((s) => s.studentId === userId)
+      .sort((a, b) => b.attempt - a.attempt),
     latest = own[0];
   const files: ProjectFile[] = data?.files || [];
   const drafts = files.filter((f) => f.assignmentId === selected && !f.submissionId);
@@ -96,17 +110,19 @@ export default function Projects({
     isParticipant &&
     task?.status === "published" &&
     !archived &&
-    (!latest || latest.status === "changes_requested");
+    task?.canSubmit;
   async function load() {
     const d = await api(classId);
     setData(d);
+    setBackgroundError("");
+    setError("");
   }
   useEffect(() => {
     let live = true;
-    setSelected(new URLSearchParams(location.search).get("task") || "");
+    const initialTask = new URLSearchParams(location.search).get("task") || "";
     api(classId)
       .then((d) => {
-        if (live) setData(d);
+        if (live) {setData(d);setSelected(initialTask);}
       })
       .catch((e) => {
         if (live) setError(e.message);
@@ -119,9 +135,9 @@ export default function Projects({
     const timer = setInterval(() => {
       if (document.visibilityState === "visible")
         api(classId)
-          .then(setData)
+          .then((next) => { setData(next); setBackgroundError(""); })
           .catch((e) => {
-            setError(e.message);
+            setBackgroundError(e.message);
             if ([401, 403, 404].includes(e.status)) {
               setData(null);
               setForm(null);
@@ -146,6 +162,11 @@ export default function Projects({
     if (dirty.current && !confirm("Isian belum disimpan. Tinggalkan isian?"))
       return false;
     dirty.current = false;
+    const destination = new URL(location.href);
+    destination.searchParams.set("class", classId);
+    if (id) destination.searchParams.set("task", id);
+    else destination.searchParams.delete("task");
+    window.history.replaceState(null, "", destination.pathname + destination.search + destination.hash);
     setSelected(id);
     setForm(null);
     setReview(null);
@@ -156,21 +177,32 @@ export default function Projects({
     return true;
   }
   async function mutate(body: unknown, message: string) {
+    if (mutationInFlight.current) return;
+    mutationInFlight.current = true;
     setBusy(true);
     setError("");
     setNotice("");
     try {
+      if(body&&typeof body==="object"&&"action" in body&&["submit","review"].includes(String(body.action))){
+        const value=body as Record<string,unknown>;
+        const {id,requestId,...rest}=value;void id;void requestId;
+        const key=JSON.stringify(rest);
+        if(retry.current?.key!==key)retry.current={key,id:crypto.randomUUID()};
+        body={...value,[value.action==="submit"?"id":"requestId"]:retry.current!.id};
+      }
       await api(classId, body);
+      retry.current=null;
       dirty.current = false;
       setForm(null);
       setReview(null);
       setAnswer("");
       setUrl("");
-      await load();
       setNotice(message);
+      try{await load();await onChanged?.();}catch{setError("Perubahan sudah tersimpan, tetapi tampilan belum dimuat ulang. Muat ulang sebelum mengirim lagi.");}
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      mutationInFlight.current = false;
       setBusy(false);
     }
   }
@@ -244,9 +276,9 @@ export default function Projects({
       ))}
     </ul>
   );
-  const field = (key: string, value: any) => {
+  const field = <K extends keyof AssignmentForm>(key: K, value: AssignmentForm[K]) => {
     dirty.current = true;
-    setForm({ ...form, [key]: value });
+    setForm(previous => previous ? {...previous, [key]: value} : previous);
   };
   return (
     <section
@@ -278,6 +310,7 @@ export default function Projects({
                   version: 0,
                   title: "",
                   instructions: "",
+                  rubric:"",requirementId:null,
                   dueAt: "",
                   status: "draft",
                 });
@@ -291,11 +324,11 @@ export default function Projects({
       </div>
       <p className="class-help">
         Kumpulkan penjelasan hasil, lampiran, dan tautan proyek. Mentor meninjau pekerjaan
-        Anda; penilaian ini tidak mengubah kelulusan tes course.
+        Anda. Tugas wajib mengikuti standar nilai course dan status Diterima untuk melanjutkan materi.
       </p>
-      {error && (
+      {(error || backgroundError) && (
         <p className="class-error" role="alert">
-          {error}
+          {error || backgroundError}
         </p>
       )}
       {notice && (
@@ -304,7 +337,7 @@ export default function Projects({
         </p>
       )}
       {!data && !error && <p>Memuat tugas…</p>}
-      {form && staff && !archived && (
+      {form && data && staff && !archived && (
         <form
           className="project-form"
           onSubmit={(e) => {
@@ -313,7 +346,9 @@ export default function Projects({
               {
                 action: "saveAssignment",
                 assignment: {
-                  ...form,
+                  id:form.id,classId:form.classId,version:form.version,title:form.title,instructions:form.instructions,
+                  rubric:form.rubric||"",requirementId:form.requirementId||null,status:form.status,
+                  ...(form.change?.reason?.trim()?{change:form.change}:{}),
                   dueAt: form.dueAt
                     ? new Date(form.dueAt + ":00+07:00").toISOString()
                     : null,
@@ -343,6 +378,9 @@ export default function Projects({
               onChange={(e) => field("instructions", e.target.value)}
             />
           </label>
+          <label className="class-field"><span>Rubrik penilaian</span><textarea rows={3} value={form.rubric||""} maxLength={8000} onChange={e=>field("rubric",e.target.value)}/></label>
+          <label className="class-field"><span>Syarat review materi</span><select value={form.requirementId||""} disabled={!!task?.requirementId} onChange={e=>{const r=data.requirements.find((r)=>r.id===e.target.value);setForm({...form,requirementId:r?.id||null,...(r?{instructions:r.instructions,rubric:r.rubric,title:r.title}:{})});dirty.current=true;}}><option value="">Tugas opsional</option>{data.requirements?.map((r)=><option value={r.id} key={r.id}>{r.lessonTitle} · {r.title}</option>)}</select></label>
+          {data.owner&&form.version>0&&<div className="context-card"><label className="class-field"><span>Dampak perubahan instruksi/rubrik</span><select value={form.change?.kind||"substantial"} onChange={e=>field("change",{kind:e.target.value as "editorial" | "substantial",reason:form.change?.reason||""})}><option value="substantial">Substansial: wajib mengirim ulang</option><option value="editorial">Editorial: koreksi tanpa perubahan makna</option></select></label>{form.change?.kind==="editorial"&&<label className="class-field"><span>Alasan konfirmasi editorial Admin</span><textarea required maxLength={2000} value={form.change.reason} onChange={e=>field("change",{kind:form.change?.kind || "substantial",reason:e.target.value})}/></label>}<p>Sertifikat yang sudah terbit tetap merekam hasil saat diterbitkan.</p></div>}
           <div className="class-form-grid">
             <label className="class-field">
               <span>Tenggat (WIB, opsional)</span>
@@ -356,7 +394,7 @@ export default function Projects({
               <span>Status tugas</span>
               <select
                 value={form.status}
-                onChange={(e) => field("status", e.target.value)}
+                onChange={(e) => field("status", e.target.value as "draft" | "published" | "closed")}
               >
                 <option value="draft">Draft</option>
                 <option value="published">Pengumpulan dibuka</option>
@@ -386,11 +424,12 @@ export default function Projects({
       {!form && !task && data && (
         <>
           <div className="project-task-list">
-            {data.tasks.map((t: any) => {
+            {data.tasks.map((t) => {
+              const academicReview = data.graduation?.lessons.flatMap(l => l.requiredReviews).find(r => r.assignmentId === t.id);
               const submissions = data.submissions.filter(
-                (s: any) => s.assignmentId === t.id,
+                (s) => s.assignmentId === t.id,
               );
-              const people = new Set(submissions.map((s: any) => s.studentId))
+              const people = new Set(submissions.map((s) => s.studentId))
                 .size;
               return (
                 <button
@@ -405,7 +444,7 @@ export default function Projects({
                     {staff
                       ? `${people} peserta mengirim`
                       : submissions.length
-                        ? labels[submissions[0].status]
+                        ? labels[academicReview?.status === "stale" ? "stale" : submissions[0].status]
                         : "Belum ada kiriman"}
                   </small>
                 </button>
@@ -452,7 +491,8 @@ export default function Projects({
             <p>
               {date(task.dueAt)} · Versi instruksi {task.version}
             </p>
-            <p className="project-text">{task.instructions}</p>
+            <p className="project-text">{task.locked?task.blocker:task.instructions}</p>{!task.locked&&task.rubric&&<p className="project-text">Rubrik: {task.rubric}</p>}<p>{task.requirementId?`Review wajib: minimal ${data?.reviewPassThreshold ?? 80} dan Diterima untuk melanjutkan.`:"Tugas opsional; tidak menahan kelulusan materi."}</p>
+            {requiredReview?.status === "stale" && <p>Hasil sebelumnya tetap tersimpan sebagai riwayat. Kerjakan ulang tugas ini sesuai revisi penilaian terbaru.</p>}
           </div>
           {canSubmit && (
             <form
@@ -506,10 +546,10 @@ export default function Projects({
               </label>
               <label className="class-field">
                 <span>Lampiran pekerjaan (opsional)</span>
-                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.txt" disabled={busy || drafts.length >= 3 || data.uploadsAvailable === false}
+                <input type="file" accept=".pdf,.png,.jpg,.jpeg,.txt" disabled={busy || drafts.length >= 3 || data?.uploadsAvailable === false}
                   onChange={(e) => {const file=e.target.files?.[0];e.target.value="";if(file) void upload(file);}} />
               </label>
-              {data.uploadsAvailable === false && <p className="class-help">Upload belum tersedia. Anda tetap dapat mengirim penjelasan dan tautan pekerjaan.</p>}
+              {data?.uploadsAvailable === false && <p className="class-help">Upload belum tersedia. Anda tetap dapat mengirim penjelasan dan tautan pekerjaan.</p>}
               <p className="class-help">PDF, PNG, JPEG, atau TXT · maksimal 5 MB per berkas dan 3 lampiran per kiriman. Lampiran tersimpan sampai Anda mengirim atau menghapusnya.</p>
               {draftFiles}
               <p className="class-help">
@@ -537,9 +577,9 @@ export default function Projects({
             {history.length})
           </h3>
           {!history.length && <p>Belum ada pekerjaan yang dikumpulkan.</p>}
-          {history.map((s: any) => {
+          {history.map((s) => {
             const current = !history.some(
-              (x: any) => x.studentId === s.studentId && x.attempt > s.attempt,
+              (x) => x.studentId === s.studentId && x.attempt > s.attempt,
             );
             return (
               <article key={s.id} className="project-submission">
@@ -564,7 +604,7 @@ export default function Projects({
                     target="_blank"
                     rel="noopener noreferrer"
                   >
-                    Buka proyek
+                    Buka proyek · {projectHost(s.url)}
                   </a>
                 )}
                 {files.some((f) => f.submissionId === s.id) && <ul className="project-files" aria-label="Lampiran kiriman">
@@ -612,6 +652,8 @@ export default function Projects({
                     Review pekerjaan {s.studentName}
                   </button>
                 )}
+                {s.rubric&&<p className="project-text">Rubrik saat dikirim: {s.rubric}</p>}{s.reviewPassThreshold!==undefined&&<p>Standar nilai saat dikirim: minimal {s.reviewPassThreshold} dan Diterima.</p>}
+                {data?.reviewHistory?.some((r:{submissionId:string})=>r.submissionId===s.id)&&<details><summary>Riwayat review kiriman ini</summary>{data?.reviewHistory.filter((r:{submissionId:string})=>r.submissionId===s.id).map((r:{id:string;sequence:number;status:string;score:number|null;feedback:string;reviewerName:string;reviewedAt:string})=><div className="context-card" key={r.id}><b>Review {r.sequence}: {labels[r.status]||r.status}{r.score!==null?` · Nilai ${r.score}/100`:" · Belum ada nilai"}</b><p className="project-text">{r.feedback}</p><small>{r.reviewerName} · {date(r.reviewedAt)}</small></div>)}</details>}
                 {staff && !archived && current && review?.id === s.id && (
                   <form
                     className="project-form"
@@ -637,7 +679,7 @@ export default function Projects({
                         value={review.status}
                         onChange={(e) => {
                           dirty.current = true;
-                          setReview({ ...review, status: e.target.value });
+                          setReview({ ...review, status: e.target.value as "accepted" | "changes_requested" });
                         }}
                       >
                         <option value="changes_requested">Perlu revisi</option>
@@ -658,10 +700,11 @@ export default function Projects({
                       />
                     </label>
                     <label className="class-field">
-                      <span>Nilai 0–100 (opsional)</span>
+                      <span>{task.requirementId&&review.status==="accepted"?`Nilai ${data?.reviewPassThreshold ?? 80}–100 (wajib untuk Diterima)`:"Nilai 0–100 (opsional)"}</span>
                       <input
                         type="number"
-                        min={0}
+                        min={task.requirementId&&review.status==="accepted"?(data?.reviewPassThreshold ?? 80):0}
+                        required={!!task.requirementId&&review.status==="accepted"}
                         max={100}
                         step={1}
                         value={review.score}

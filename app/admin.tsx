@@ -1,9 +1,11 @@
 "use client";
+import {publicationImpact} from "@/lib/academic-revisions";
+import {hasRequiredCoding,REQUIRED_CODING_WARNING} from "@/lib/judge-policy";
 import ManagementReports from "./management-reports";
 import { CertificateList } from "./certificates-panel";
 import { CourseUpload, CourseFileLibrary } from "./media-controls";
 import { mediaId, type MediaInfo } from "@/lib/media-model";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   Plus,
   Save,
@@ -19,9 +21,9 @@ import {
   Settings2,
   MessageCircle,
   Check,
-  Video,
-  MapPin,
 } from "lucide-react";
+import type {LucideIcon} from "lucide-react";
+import type {AdminStudio} from "@/lib/client-dto";
 import type { Course, Lesson, Block, Session } from "@/lib/model";
 import { api, localDate, DiscussionPanel } from "./studio";
 const uid = () => crypto.randomUUID();
@@ -50,17 +52,19 @@ function Field({
     </label>
   );
 }
-function JudgeCheck() {
-  const [result, setResult] = useState<any>(null),
+function JudgeCheck({onChecked}:{onChecked:(passed:boolean)=>void}) {
+  const [result, setResult] = useState<{message?:string;passed?:boolean;checks?:{label:string;ok:boolean}[]} | null>(null),
     [busy, setBusy] = useState(false);
   async function check() {
     setBusy(true);
     try {
-      setResult(await api("/api/judge", {}));
+      const checked=await api<{message?:string;passed?:boolean;checks?:{label:string;ok:boolean}[]}>("/api/judge", {});
+      setResult(checked);onChecked(checked.passed===true);
     } catch (e) {
       setResult({
         message: e instanceof Error ? e.message : "Pemeriksaan belum berhasil.",
       });
+      onChecked(false);
     } finally {
       setBusy(false);
     }
@@ -78,7 +82,7 @@ function JudgeCheck() {
                 ? "Konfigurasi dasar lolos. Tetap uji sandbox sebelum kelas dimulai."
                 : "Konfigurasi layanan belum memenuhi pemeriksaan dasar.")}
           </p>
-          {result.checks?.map((c: any) => (
+          {result.checks?.map((c) => (
             <p key={c.label}>
               {c.ok ? "✓" : "×"} {c.label}
             </p>
@@ -99,7 +103,7 @@ export default function Admin({
   onPreview: (course: string, lesson: string) => void;
   onDirtyChange: (dirty: boolean) => void;
 }) {
-  const [data, setData] = useState<any>(null),
+  const [data, setData] = useState<AdminStudio | null>(null),
     [editing, setEditing] = useState<Course | null>(null),
     [selected, setSelected] = useState(""),
     [tab, setTab] = useState("content"),
@@ -121,21 +125,20 @@ export default function Admin({
       onDirtyChange(false);
     };
   }, [dirty, onDirtyChange]);
-  async function load() {
+  const load=useCallback(async () => {
     try {
-      const d = curriculum ? {courses:[curriculum.course]} : await api("/api/studio?admin=1");
+      const d = curriculum ? {courses:[curriculum.course],progress:[],users:[],sessions:[],judgeReady:(await api<{passed:boolean}>("/api/judge")).passed} : await api<AdminStudio>("/api/studio?admin=1");
       setData(d);
-      if (!editing && d.courses[0]) {
-        setEditing(d.courses[0]);
-        setSelected(d.courses[0].lessons[0]?.id || "");
-      }
-    } catch (e: any) {
+      setEditing(current=>current || d.courses[0] || null);
+      setSelected(current=>current || d.courses[0]?.lessons[0]?.id || "");
+    } catch (cause) {
+      const e = cause as Error & {status?: number};
       setError(e.message);
     }
-  }
+  },[curriculum]);
   useEffect(() => {
-    void load();
-  }, []);
+    const startup=setTimeout(load,0);return()=>clearTimeout(startup);
+  }, [load]);
   const lesson = editing?.lessons.find((l) => l.id === selected);
   function edit(c: Course) {
     setEditing(c);
@@ -180,7 +183,16 @@ export default function Admin({
     setBusy(true);
     setError("");
     try {
-      const d = curriculum ? {course:await curriculum.save(editing)} : await api("/api/studio", {
+      if(!curriculum){
+        const before=data?.courses.find((c:Course)=>c.id===editing.id);
+        const impact=publicationImpact(editing,before);
+        if(impact.substantial.length||impact.removed.length){
+          const ids=new Set(impact.substantial.map(l=>l.id));
+          const count=new Set((data?.progress||[]).filter((p:{course_id:string;lesson_id:string;user_id:string})=>p.course_id===editing.id&&ids.has(p.lesson_id)).map((p:{user_id:string})=>p.user_id)).size;
+          if(!confirm(`Dampak publikasi: ${impact.substantial.map(l=>l.title).join(", ")||"Tidak ada materi berubah"}. ${count} peserta dengan progres terdampak perlu mengulang. ${impact.removed.length} materi dihapus. Sertifikat yang telah terbit tetap. Terapkan perubahan?`))return;
+        }
+      }
+      const d = curriculum ? {course:await curriculum.save(editing)} : await api<{course:Course}>("/api/studio", {
         action: "saveCourse",
         course: {
           ...editing,
@@ -200,10 +212,11 @@ export default function Admin({
       setEditing(d.course);
       setDirty(false);
       setMessage("Perubahan tersimpan.");
-      const next = curriculum ? {courses:[d.course]} : await api("/api/studio?admin=1");
+      const next = curriculum ? {courses:[d.course],progress:[],users:[],sessions:[],judgeReady:data?.judgeReady||false} : await api<AdminStudio>("/api/studio?admin=1");
       setData(next);
       await reload();
-    } catch (e: any) {
+    } catch (cause) {
+      const e = cause as Error & {status?: number};
       setError(e.message);
     } finally {
       setBusy(false);
@@ -218,8 +231,9 @@ export default function Admin({
     ];
     edit({ ...editing, lessons });
   }
+  const Container = curriculum ? "div" : "main";
   return (
-    <main className="admin-page">
+    <Container className="admin-page">
       <div className="admin-heading">
         <div>
           <div className="eyebrow teal">{curriculum ? "DRAF TIM KURIKULUM" : "EDITOR COURSE"}</div>
@@ -236,14 +250,14 @@ export default function Admin({
         </button>
       </div>
       {!curriculum && <div className="admin-tabs">
-        {[
+        {([
           ["content", "Konten & kurikulum", Layers3],
           ["sessions", "Sesi Tutor", CalendarDays],
           ["progress", "Progres siswa", Users],
           ["certificates", "Sertifikat", Check],
           ["reports", "Laporan", Users],
           ["integration", "Pemeriksa kode", Code2],
-        ].map(([key, label, Icon]: any) => (
+        ] as [string,string,LucideIcon][]).map(([key, label, Icon]) => (
           <button
             key={key}
             className={tab === key ? "active" : ""}
@@ -303,8 +317,8 @@ export default function Admin({
                 </tr>
               </thead>
               <tbody>
-                {data.progress.map((p: any) => {
-                  const c = data.courses.find(
+                {data.progress.map((p) => {
+                  const c = data?.courses.find(
                       (c: Course) => c.id === p.course_id,
                     ),
                     l = c?.lessons.find((l: Lesson) => l.id === p.lesson_id);
@@ -341,7 +355,8 @@ export default function Admin({
                               });
                               await load();
                               setMessage("Kuota percobaan dibuka kembali.");
-                            } catch (e: any) {
+                            } catch (cause) {
+      const e = cause as Error & {status?: number};
                               setError(e.message);
                             }
                           }}
@@ -363,15 +378,15 @@ export default function Admin({
         <section className="integration-panel">
           <span className={`pill ${data.judgeReady ? "" : "warning"}`}>
             {data.judgeReady
-              ? "Endpoint sudah dikonfigurasi"
-              : "Belum terhubung"}
+              ? "Pemeriksaan kesiapan layanan lolos"
+              : "Penilaian resmi belum siap"}
           </span>
           <h2>Latihan gratis & penilaian resmi</h2>
           <p>
             Gunakan tombol “Coba gratis di browser” untuk Python dan JavaScript.
             C++ serta penilaian resmi memerlukan layanan server.
           </p>
-          <JudgeCheck />
+          <JudgeCheck onChecked={passed=>setData(current=>current?{...current,judgeReady:passed}:current)} />
           <p>
             Latihan dinilai berdasarkan test case. Input dan jawaban tersembunyi
             tetap berada di server; kode dijalankan pada sandbox terpisah dengan
@@ -417,7 +432,7 @@ export default function Admin({
               <select
                 value={editing?.id || ""}
                 onChange={(e) => {
-                  const c = data.courses.find(
+                  const c = data?.courses.find(
                     (c: Course) => c.id === e.target.value,
                   );
                   if (c) switchCourse(c);
@@ -461,6 +476,7 @@ export default function Admin({
           </div>
           {editing && (
             <>
+              {hasRequiredCoding(editing)&&!data.judgeReady&&<p className="feedback warning" role="status">{REQUIRED_CODING_WARNING}</p>}
               <details className="course-settings" open={editing.version === 0}>
                 <summary>
                   <Settings2 size={17} />
@@ -533,8 +549,12 @@ export default function Admin({
                     Tandai sebagai course contoh
                   </label>
                 </div>
+                <Field label="Jalur belajar"><select value={editing.learningMode||"independent_allowed"} onChange={e=>edit({...editing,learningMode:e.target.value as Course["learningMode"]})}><option value="independent_allowed">Belajar mandiri tanpa review wajib</option><option value="class_required">Kelas dengan pendampingan Tutor</option></select></Field>
+                <Field label="Nilai minimal review wajib (0–100)"><input type="number" min={0} max={100} step={1} value={editing.reviewPassThreshold ?? 80} onChange={e=>edit({...editing,reviewPassThreshold:Number(e.target.value)})}/></Field>
+                <p className="small">Standar ini berlaku untuk semua review wajib pada course ini. Perubahan standar memerlukan penilaian ulang materi yang memiliki review wajib setelah draf disetujui.</p>
+                <label className="checkbox-label"><input type="checkbox" checked={editing.policyState==="ready"} onChange={e=>edit({...editing,graduationPolicyVersion:2,policyState:e.target.checked?"ready":"needs_mapping"})}/>Pemetaan syarat kelulusan sudah diperiksa</label>
                 <label className="checkbox-label"><input type="checkbox" checked={!!editing.certificateEnabled} onChange={e=>edit({...editing,certificateEnabled:e.target.checked})}/>Aktifkan sertifikat penyelesaian</label>
-                <p className="small">Syarat: semua materi versi terbaru selesai, tes wajib lulus, serta seluruh tugas terbit/ditutup dalam satu kelas diterima Tutor (minimal satu tugas). Course contoh tidak menerbitkan sertifikat. Sertifikat lama tetap merekam versi penerbitannya.</p>
+                <p className="small">Syarat: semua materi versi terbaru selesai, tes wajib lulus, serta semua review wajib pada kelas yang dipilih Diterima dengan nilai sesuai standar course. Tugas opsional tidak menahan kelulusan. Course contoh tidak menerbitkan sertifikat. Sertifikat lama tetap merekam versi penerbitannya.</p>
                 <CourseOverview course={editing} update={edit} />
               </details>
               <div className="authoring">
@@ -640,7 +660,10 @@ export default function Admin({
                             }
                           />
                         </Field>
-                        <Field label="Modul">
+                        <Field label="Jenis perubahan materi"><select value={lesson.change?.kind||"substantial"} onChange={e=>patchLesson({change:{kind:e.target.value as "editorial"|"substantial",reason:lesson.change?.reason||"Pembaruan materi."}})}><option value="substantial">Substansial: peserta perlu mengulang materi terdampak</option><option value="editorial">Editorial: koreksi tanpa perubahan makna</option></select></Field>
+                    <Field label="Alasan perubahan"><input value={lesson.change?.reason||""} maxLength={2000} onChange={e=>patchLesson({change:{kind:lesson.change?.kind||"substantial",reason:e.target.value}})}/></Field>
+                    <section><h3>Review Tutor wajib</h3>{(lesson.reviewRequirements||[]).map((r,i)=><div key={r.id} className="context-card"><Field label="Judul tugas"><input value={r.title} onChange={e=>patchLesson({reviewRequirements:lesson.reviewRequirements!.map((x,j)=>j===i?{...x,title:e.target.value}:x)})}/></Field><Field label="Template instruksi"><textarea value={r.instructions} onChange={e=>patchLesson({reviewRequirements:lesson.reviewRequirements!.map((x,j)=>j===i?{...x,instructions:e.target.value}:x)})}/></Field><Field label="Rubrik"><textarea value={r.rubric} onChange={e=>patchLesson({reviewRequirements:lesson.reviewRequirements!.map((x,j)=>j===i?{...x,rubric:e.target.value}:x)})}/></Field><button type="button" className="secondary" onClick={()=>patchLesson({reviewRequirements:lesson.reviewRequirements!.filter(x=>x.id!==r.id)})}>Hapus syarat review</button></div>)}<button type="button" className="secondary" onClick={()=>{edit({...editing,learningMode:"class_required",lessons:editing.lessons.map(l=>l.id===lesson.id?{...l,reviewRequirements:[...(l.reviewRequirements||[]),{id:uid(),revision:1,title:"Proyek wajib",instructions:"",rubric:""}]}:l)});}}>Tambah review wajib</button><p>Nilai minimal {editing.reviewPassThreshold ?? 80} dan status Diterima. Pasang tugas yang terkait di setiap kelas sebelum pembelajaran dibuka.</p></section>
+                    <Field label="Modul">
                           <input
                             value={lesson.module}
                             onChange={(e) =>
@@ -763,8 +786,8 @@ export default function Admin({
                               }
                             />
                           )}{" "}
-                          {["image", "file"].includes(b.type) && (
-                            <CourseUpload courseId={editing.version > 0 ? editing.id : null} type={b.type as "image" | "file"} disabled={busy} onBusy={setBusy} onUploaded={(file) => uploadedBlock(b.id, file)} />
+                          {["image", "video", "file"].includes(b.type) && (
+                            <CourseUpload courseId={editing.version > 0 ? editing.id : null} type={b.type as "image" | "video" | "file"} disabled={busy} onBusy={setBusy} onUploaded={(file) => uploadedBlock(b.id, file)} />
                           )}
                           {["video", "image", "file"].includes(b.type) && (
                             <input
@@ -819,7 +842,7 @@ export default function Admin({
                           </button>
                         ))}
                       </div>
-                      {editing.version > 0 && <CourseFileLibrary allowRemoval={!curriculum} key={editing.id} courseId={editing.id} usedIds={editing.lessons.flatMap(item => item.blocks.map(block => mediaId(block.content)).filter((id): id is string => !!id))} disabled={busy} onChoose={(file) => patchLesson({blocks:[...lesson.blocks,{id:uid(),type:file.mime.startsWith("image/") ? "image" : "file",content:file.url,caption:file.name}]})} />}
+                      {editing.version > 0 && <CourseFileLibrary allowRemoval={!curriculum} key={editing.id} courseId={editing.id} usedIds={editing.lessons.flatMap(item => item.blocks.map(block => mediaId(block.content)).filter((id): id is string => !!id))} disabled={busy} onChoose={(file) => patchLesson({blocks:[...lesson.blocks,{id:uid(),type:file.mime.startsWith("image/") ? "image" : file.mime === "video/mp4" ? "video" : "file",content:file.url,caption:file.name}]})} />}
                       <QuizEditor lesson={lesson} patch={patchLesson} />
                       <ExerciseEditor lesson={lesson} patch={patchLesson} />
                       {!curriculum && <details className="course-settings">
@@ -867,7 +890,7 @@ export default function Admin({
           )}
         </>
       )}
-    </main>
+    </Container>
   );
 }
 function QuizEditor({
@@ -906,7 +929,7 @@ function QuizEditor({
         Tambahkan tes pemahaman
       </button>
     );
-  const update = (p: any) => patch({ quiz: { ...quiz, ...p } });
+  const update = (p: Partial<NonNullable<Lesson["quiz"]>>) => patch({ quiz: { ...quiz, ...p } });
   return (
     <section className="config-card">
       <div className="section-heading">
@@ -919,7 +942,7 @@ function QuizEditor({
         <Field label="Fungsi tes">
           <select
             value={quiz.mode}
-            onChange={(e) => update({ mode: e.target.value })}
+            onChange={(e) => update({ mode: e.target.value as "required" | "review" })}
           >
             <option value="review">Review — tidak mengunci</option>
             <option value="required">
@@ -948,7 +971,7 @@ function QuizEditor({
         <Field label="Tampilkan pembahasan">
           <select
             value={quiz.feedback}
-            onChange={(e) => update({ feedback: e.target.value })}
+            onChange={(e) => update({ feedback: e.target.value as "always" | "after_pass" | "never" })}
           >
             <option value="always">Setelah setiap percobaan</option>
             <option value="after_pass">Setelah lulus</option>
@@ -1134,7 +1157,7 @@ function ExerciseEditor({
         Tambahkan latihan kode
       </button>
     );
-  const update = (p: any) => patch({ exercise: { ...ex, ...p } });
+  const update = (p: Partial<NonNullable<Lesson["exercise"]>>) => patch({ exercise: { ...ex, ...p } });
   return (
     <section className="config-card">
       <div className="section-heading">
@@ -1150,7 +1173,7 @@ function ExerciseEditor({
         <Field label="Bahasa">
           <select
             value={ex.language}
-            onChange={(e) => update({ language: e.target.value })}
+            onChange={(e) => update({ language: e.target.value as "python" | "javascript" | "cpp" })}
           >
             <option value="python">Python</option>
             <option value="javascript">JavaScript (Node.js)</option>
@@ -1290,7 +1313,7 @@ function SessionAdmin({
     url: "",
     capacity: 12,
   };
-  const [form, setForm] = useState<any>(empty),
+  const [form, setForm] = useState<typeof empty & {id?:string}>(empty),
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
@@ -1311,7 +1334,8 @@ function SessionAdmin({
             setForm(empty);
             setMessage("Jadwal tersimpan.");
             await refresh();
-          } catch (e: any) {
+          } catch (cause) {
+      const e = cause as Error & {status?: number};
             setError(e.message);
           } finally {
             setBusy(false);
@@ -1343,7 +1367,7 @@ function SessionAdmin({
           <Field label="Bentuk sesi">
             <select
               value={form.kind}
-              onChange={(e) => setForm({ ...form, kind: e.target.value })}
+              onChange={(e) => setForm({ ...form, kind: e.target.value as "online" | "offline" })}
             >
               <option value="online">Live online</option>
               <option value="offline">Tatap muka</option>

@@ -1,7 +1,11 @@
+import {concurrentRead} from "./concurrent-read.ts";
+import {loadGraduationContext,assertAcademicRead} from "./graduation-data.ts";
 import type { PlatformDatabase } from './database.ts';
+import {authorizationGuard,ownerSql,grantSql,teachingSql} from "./authorization.ts";
 import { AccessError } from './access.ts';
-import { pendingReviewSql } from './tutor-dashboard.ts';
-import { canComplete, progressFor } from './rules.ts';
+import { currentPendingReviewSql } from './tutor-dashboard.ts';
+import { profileNameSql } from './profile-name-sql.ts';
+
 import type { Course, Progress } from './model';
 import type { ManagementReport, ReportCourse, ReportDays, ReportLearner, ReportTutor } from './report-model.ts';
 type User = {
@@ -15,8 +19,8 @@ type Options = {
 };
 const participantLimit = 5000;
 export async function managementReport(d: PlatformDatabase, u: User, options: Options = {}, now = new Date().toISOString()): Promise<ManagementReport> {
-  if (u.role !== 'owner')
-    throw new AccessError(403, 'Laporan pengelola hanya untuk Super Admin.');
+  const guard=await authorizationGuard(d,u,"owner");
+  const verify=async()=>{if(!await d.prepare(`SELECT 1 WHERE ${guard.sql}`).bind(...guard.binds).first())throw new AccessError(403,'Hak akses laporan berubah. Muat ulang.');};
   const days = options.days ?? 30;
   if (![7, 30, 90].includes(days) || !Number.isFinite(Date.parse(now)))
     throw new AccessError(400, 'Periode laporan tidak valid.');
@@ -35,15 +39,17 @@ export async function managementReport(d: PlatformDatabase, u: User, options: Op
     throw new AccessError(413, 'Pilih satu course untuk memperkecil laporan.');
   const summary = { courses: courses.length, uniqueParticipants: 0, courseParticipants: 0, finished: 0, activeParticipants: 0, pendingReviews: 0, validCertificates: 0 };
   const result: ManagementReport = { generatedAt, periodStart, days, selectedCourseId: options.courseId || null, includeSamples: !!options.includeSamples, courses: [], participants: [], tutors: [], summary };
-  if (!courses.length)
+  if (!courses.length) {
+    await verify();
     return result;
+  }
   const ids = courses.map(c => c.id), marks = ids.map(() => '?').join(',');
-  const participantRows = (await d.prepare(`SELECT p.userId,p.courseId,u.name,u.role,COALESCE(a.status,'pending') AS accessStatus,e.created_at AS enrolledAt
+  const participantRows = (await d.prepare(`SELECT p.userId,p.courseId,${profileNameSql(d)} AS name,'student' AS role,COALESCE(a.status,'pending') AS accessStatus,e.created_at AS enrolledAt
   FROM (SELECT user_id AS userId,course_id AS courseId FROM enrollments WHERE course_id IN (${marks})
-    UNION SELECT user_id,course_id FROM progress WHERE course_id IN (${marks})
+    UNION SELECT user_id,course_id FROM learning_progress_revisions WHERE course_id IN (${marks})
     UNION SELECT m.user_id,c.course_id FROM cohort_members m JOIN cohorts c ON c.id=m.class_id WHERE m.status='approved' AND c.course_id IN (${marks})) p
-  JOIN users u ON u.id=p.userId LEFT JOIN user_access a ON a.user_id=u.id LEFT JOIN enrollments e ON e.user_id=u.id AND e.course_id=p.courseId
-  WHERE u.role!='owner' ORDER BY p.courseId,u.name,p.userId LIMIT ${participantLimit + 1}`).bind(...ids, ...ids, ...ids).all<{
+  JOIN users u ON u.id=p.userId JOIN account_principals ap ON ap.user_id=u.id AND ap.kind='student' LEFT JOIN user_access a ON a.user_id=u.id LEFT JOIN enrollments e ON e.user_id=u.id AND e.course_id=p.courseId
+  WHERE NOT ${ownerSql('u.id')} ORDER BY p.courseId,u.name,p.userId LIMIT ${participantLimit + 1}`).bind(...ids, ...ids, ...ids).all<{
     userId: string;
     courseId: string;
     name: string;
@@ -53,7 +59,7 @@ export async function managementReport(d: PlatformDatabase, u: User, options: Op
   }>()).results;
   if (participantRows.length > participantLimit)
     throw new AccessError(413, 'Laporan melebihi 5.000 pasangan peserta–course. Pilih satu course untuk memperkecil laporan.');
-  const progressRows = (await d.prepare(`SELECT p.user_id AS userId,p.course_id AS courseId,p.lesson_id AS lessonId,p.revision,p.complete,p.quiz_passed AS quizPassed,p.code_passed AS codePassed,p.quiz_attempts AS quizAttempts,p.code_attempts AS codeAttempts,p.score FROM progress p JOIN users u ON u.id=p.user_id WHERE u.role!='owner' AND p.course_id IN (${marks}) LIMIT 500001`).bind(...ids).all<Progress & {
+  const progressRows = (await d.prepare(`SELECT p.user_id AS userId,p.course_id AS courseId,p.lesson_id AS lessonId,p.revision,p.complete,p.quiz_passed AS quizPassed,p.code_passed AS codePassed,p.quiz_attempts AS quizAttempts,p.code_attempts AS codeAttempts,p.score FROM learning_progress_revisions p JOIN account_principals ap ON ap.user_id=p.user_id AND ap.kind='student' WHERE NOT ${ownerSql('p.user_id')} AND p.course_id IN (${marks}) LIMIT 500001`).bind(...ids).all<Progress & {
     userId: string;
     courseId: string;
   }>()).results;
@@ -86,12 +92,17 @@ export async function managementReport(d: PlatformDatabase, u: User, options: Op
     progressMap.get(k)!.push(p);
   }
   const courseMap = new Map(courses.map(c => [c.id, c]));
-  result.participants = participantRows.map(row => {
+  result.participants = await concurrentRead(participantRows,async row => {
     const c = courseMap.get(row.courseId)!, progress = progressMap.get(key(row.userId, c.id)) || [], activity = activityMap.get(key(row.userId, c.id));
-    const completed = c.lessons.filter(l => { const p = progressFor(l, progress); return p?.complete === 1 && canComplete(l, p); }).length;
-    const stale = c.lessons.filter(l => progress.some(p => p.lessonId === l.id && p.revision !== l.revision)).length;
+    const ctx=await loadGraduationContext(d,{id:row.userId},c.id,undefined,u);
+    const contexts=ctx.state.classes.length?await concurrentRead(ctx.state.classes,cl=>loadGraduationContext(d,{id:row.userId},c.id,cl.id,u)):[ctx];
+    const classResults=contexts.map(value=>({classId:value.state.classId,className:value.state.className,completed:value.state.lessons.filter(l=>l.stagePassed).length,total:c.lessons.length,finished:value.state.passed}));
+    const completed=classResults.length?Math.min(...classResults.map(r=>r.completed)):0;
+    for(const value of contexts)await assertAcademicRead(d,value);
+    await assertAcademicRead(d,ctx);
+    const stale = c.lessons.filter(l => !progress.some(p=>p.lessonId===l.id&&p.revision===l.revision)&&progress.some(p => p.lessonId === l.id && p.revision !== l.revision)).length;
     const quizAttempts = Number(activity?.quizAttempts || 0), codeAttempts = Number(activity?.codeAttempts || 0), submissions = Number(activity?.submissions || 0), posts = Number(activity?.posts || 0);
-    return { ...row, courseTitle: c.title, completed, total: c.lessons.length, percent: c.lessons.length ? Math.round(completed / c.lessons.length * 100) : 0, finished: !!c.lessons.length && completed === c.lessons.length, started: progress.length > 0 || !!activity?.lastActivityAt, stale, quizAttempts, codeAttempts, submissions, posts, lastActivityAt: activity?.lastActivityAt || null, activeInPeriod: quizAttempts + codeAttempts + submissions + posts > 0 } satisfies ReportLearner;
+    return { ...row, classResults,courseTitle: c.title, completed, total: c.lessons.length, percent: c.lessons.length ? Math.round(completed / c.lessons.length * 100) : 0, finished: !!c.lessons.length && completed === c.lessons.length, started: progress.length > 0 || !!activity?.lastActivityAt, stale, quizAttempts, codeAttempts, submissions, posts, lastActivityAt: activity?.lastActivityAt || null, activeInPeriod: quizAttempts + codeAttempts + submissions + posts > 0 } satisfies ReportLearner;
   });
   const certificateRows = (await d.prepare(`SELECT course_id AS courseId,count(*) AS n FROM certificates WHERE revoked_at IS NULL AND course_id IN (${marks}) GROUP BY course_id`).bind(...ids).all<{
     courseId: string;
@@ -101,10 +112,10 @@ export async function managementReport(d: PlatformDatabase, u: User, options: Op
     const participants = result.participants.filter(p => p.courseId === c.id), finished = participants.filter(p => p.finished).length, notStarted = participants.filter(p => !p.started).length;
     return { id: c.id, title: c.title, published: c.published, sample: c.sample, lessonCount: c.lessons.length, participants: participants.length, finished, notStarted, inProgress: participants.length - finished - notStarted, activeInPeriod: participants.filter(p => p.activeInPeriod).length, staleParticipants: participants.filter(p => p.stale > 0).length, completionPercent: participants.length ? Math.round(finished / participants.length * 100) : 0, validCertificates: Number(certificateRows.find(r => r.courseId === c.id)?.n || 0) } satisfies ReportCourse;
   });
-  const classrooms = (await d.prepare(`SELECT c.id,c.mentor_id AS mentorId,
-  (SELECT count(*) FROM cohort_members m WHERE m.class_id=c.id AND m.status='approved') AS approvedMemberships,
-  (SELECT count(*) FROM project_submissions s JOIN class_assignments a ON a.id=s.assignment_id WHERE a.class_id=c.id AND ${pendingReviewSql}) AS pendingReviews,
-  (SELECT min(s.submitted_at) FROM project_submissions s JOIN class_assignments a ON a.id=s.assignment_id WHERE a.class_id=c.id AND ${pendingReviewSql}) AS oldestSubmittedAt,
+  const classrooms = (await d.prepare(`SELECT c.id,CASE WHEN ${teachingSql("c.mentor_id")} THEN c.mentor_id ELSE NULL END AS mentorId,
+  (SELECT count(*) FROM cohort_members m JOIN account_principals ap ON ap.user_id=m.user_id AND ap.kind='student' WHERE m.class_id=c.id AND m.status='approved') AS approvedMemberships,
+  (SELECT count(*) FROM project_submissions s JOIN class_assignments a ON a.id=s.assignment_id WHERE a.class_id=c.id AND ${currentPendingReviewSql(d)}) AS pendingReviews,
+  (SELECT min(s.submitted_at) FROM project_submissions s JOIN class_assignments a ON a.id=s.assignment_id WHERE a.class_id=c.id AND ${currentPendingReviewSql(d)}) AS oldestSubmittedAt,
   (SELECT count(*) FROM project_submissions s JOIN class_assignments a ON a.id=s.assignment_id WHERE a.class_id=c.id AND s.reviewed_at>=? AND s.reviewed_at<=?) AS reviewsInPeriod
   FROM cohorts c WHERE c.status!='archived' AND c.course_id IN (${marks})`).bind(periodStart, generatedAt, ...ids).all<{
     id: string;
@@ -114,9 +125,9 @@ export async function managementReport(d: PlatformDatabase, u: User, options: Op
     oldestSubmittedAt: string | null;
     reviewsInPeriod: number;
   }>()).results;
-  const staff = (await d.prepare(`SELECT u.id,u.name,COALESCE(a.status,'pending') AS accessStatus FROM users u LEFT JOIN user_access a ON a.user_id=u.id
-  WHERE u.role='tutor' OR EXISTS(SELECT 1 FROM tutor_accounts t WHERE t.user_id=u.id AND t.active=1)
-    OR EXISTS(SELECT 1 FROM cohorts c WHERE c.mentor_id=u.id AND c.status!='archived' AND c.course_id IN (${marks})) ORDER BY u.name,u.id`).bind(...ids).all<{
+  const staff = (await d.prepare(`SELECT u.id,${profileNameSql(d)} AS name,COALESCE(a.status,'pending') AS accessStatus FROM users u LEFT JOIN user_access a ON a.user_id=u.id
+  WHERE ${grantSql("u.id","tutor")}
+    OR EXISTS(SELECT 1 FROM cohorts c WHERE c.mentor_id=u.id AND c.status!='archived' AND c.course_id IN (${marks}) AND ${teachingSql("u.id")}) ORDER BY u.name,u.id`).bind(...ids).all<{
     id: string;
     name: string;
     accessStatus: string;
@@ -140,5 +151,6 @@ export async function managementReport(d: PlatformDatabase, u: User, options: Op
   summary.activeParticipants = new Set(result.participants.filter(p => p.activeInPeriod).map(p => p.userId)).size;
   summary.pendingReviews = result.tutors.reduce((n, t) => n + t.pendingReviews, 0);
   summary.validCertificates = result.courses.reduce((n, c) => n + c.validCertificates, 0);
+  await verify();
   return result;
 }

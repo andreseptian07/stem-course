@@ -3,6 +3,7 @@ import { z } from "zod";
 import { databaseSql, type PlatformDatabase } from "./database.ts";
 import { AuthError, sessionDuration, idleDuration } from "./auth-policy.ts";
 import { hashPassword, verifyPassword, validatePassword } from "./auth-password.ts";
+import { policySql } from "./authorization.ts";
 import { registerIdentity } from "./access.ts";
 import { requireVerifiedEmail } from "./email-policy.ts";
 import { publishedSql } from "./database-sql.ts";
@@ -55,11 +56,12 @@ export async function registerAccount(d: PlatformDatabase, raw: unknown, enabled
     const statements = [
       d.prepare("INSERT INTO auth_credentials(user_id,email,display_name,password_hash,password_version,created_at,updated_at) VALUES(?,?,?,?,1,?,?)").bind(id, b.email, b.displayName, hash, at, at),
       d.prepare("INSERT INTO users(id,name,role) VALUES(?,?,'student')").bind(id, b.displayName),
+      d.prepare("INSERT INTO account_principals(user_id,kind,version,updated_by,updated_at,proof) VALUES(?,'student',1,?,?,?)").bind(id,id,at,randomUUID()),
       d.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'pending',1,?,?)").bind(id, at, at),
     ];
-    if (b.courseId) statements.push(d.prepare(`INSERT INTO enrollments(user_id,course_id,created_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")})`).bind(id, b.courseId, at, b.courseId));
+    if (b.courseId) statements.push(d.prepare(`INSERT INTO enrollments(user_id,course_id,created_at,authorization_id) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")})`).bind(id, b.courseId, at, randomUUID(), b.courseId));
     const result = await d.batch(statements);
-    return { registered: true, courseRequested: b.courseId ? !!result[3].meta.changes : false };
+    return { registered: true, courseRequested: b.courseId ? !!result[4].meta.changes : false };
   } catch (error) {
     if (error && typeof error === "object" && "code" in error && error.code === "ER_DUP_ENTRY")
       throw new AuthError(400, "Pendaftaran belum dapat disimpan. Jika sudah memiliki akun, gunakan halaman masuk.");
@@ -87,7 +89,10 @@ export async function loginAccount(d: PlatformDatabase, raw: unknown, previousTo
   ];
   if (requestedCourse) {
     registrationSchema.shape.courseId.parse(requestedCourse);
-    statements.push(d.prepare(`INSERT INTO enrollments(user_id,course_id,created_at) SELECT ?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d, "c.data")}) AND EXISTS(SELECT 1 FROM user_access WHERE user_id=? AND status!='suspended') ON DUPLICATE KEY UPDATE user_id=user_id`).bind(user.id, requestedCourse, new Date().toISOString(), requestedCourse, user.id));
+    statements.push(d.prepare(databaseSql(d,
+      `INSERT OR IGNORE INTO enrollments(user_id,course_id,created_at,authorization_id) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d,"c.data")}) AND ${policySql("student")}`,
+      `INSERT INTO enrollments(user_id,course_id,created_at,authorization_id) SELECT ?,?,?,? WHERE EXISTS(SELECT 1 FROM courses c WHERE c.id=? AND ${publishedSql(d,"c.data")}) AND ${policySql("student")} ON DUPLICATE KEY UPDATE user_id=user_id`))
+      .bind(user.id,requestedCourse,new Date().toISOString(),randomUUID(),requestedCourse,user.id));
   }
   const result = await d.batch(statements);
   if (!result[2].meta.changes) throw new AuthError(401, "Password berubah. Silakan masuk kembali.");
@@ -115,6 +120,7 @@ export async function createOwner(d: PlatformDatabase, raw: unknown) {
   const results = await d.batch([
     d.prepare("INSERT INTO auth_credentials(user_id,email,display_name,password_hash,password_version,created_at,updated_at) SELECT ?,?,?,?,1,?,? WHERE NOT EXISTS(SELECT 1 FROM settings WHERE `key`='owner')").bind(id, b.email, b.displayName, hash, at, at),
     d.prepare("INSERT INTO users(id,name,role) SELECT ?,?,'owner' WHERE EXISTS(SELECT 1 FROM auth_credentials WHERE user_id=?)").bind(id, b.displayName, id),
+    d.prepare("INSERT INTO account_principals(user_id,kind,version,updated_by,updated_at,proof) SELECT ?,'staff',1,?,?,? WHERE EXISTS(SELECT 1 FROM auth_credentials WHERE user_id=?)").bind(id,id,at,randomUUID(),id),
     d.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) SELECT ?,'active',1,?,? WHERE EXISTS(SELECT 1 FROM auth_credentials WHERE user_id=?)").bind(id, at, at, id),
     d.prepare("INSERT INTO settings(`key`,value) SELECT 'owner',? WHERE EXISTS(SELECT 1 FROM auth_credentials WHERE user_id=?) ON DUPLICATE KEY UPDATE `key`=`key`").bind(id, id),
     d.prepare("INSERT INTO settings(`key`,value) SELECT 'owner_setup_closed','true' WHERE EXISTS(SELECT 1 FROM auth_credentials WHERE user_id=?) ON DUPLICATE KEY UPDATE `key`=`key`").bind(id),

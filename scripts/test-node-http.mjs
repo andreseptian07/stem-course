@@ -9,7 +9,7 @@ assert.equal(process.env.DB_HOST, "127.0.0.1");
 assert.equal(process.env.DB_NAME, "stem_ci");
 const origin = "https://course.ci.example", base = "http://127.0.0.1:4310";
 const child = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "-H", "127.0.0.1", "-p", "4310"], {
-  env: { ...process.env, NODE_ENV: "production", DB_NAME: "stem_auth_ci", APP_URL: origin, AUTH_REGISTRATION_ENABLED: "true", AUTH_ALLOW_LOCAL_HTTP: "false", JUDGE0_ENABLED: "false", NEXT_TELEMETRY_DISABLED: "1" },
+  env: { ...process.env, NODE_ENV: "production", DB_NAME: "stem_auth_ci", APP_URL: origin, AUTH_REGISTRATION_ENABLED: "true", AUTH_REQUIRE_EMAIL_VERIFICATION: "false", MAIL_DELIVERY: "disabled", AUTH_ALLOW_LOCAL_HTTP: "false", JUDGE0_ENABLED: "false", NEXT_TELEMETRY_DISABLED: "1" },
   stdio: ["ignore", "ignore", "pipe"],
 });
 // Do not echo request logs, tokens, passwords or connection details from stderr.
@@ -42,6 +42,10 @@ try {
   assert.equal((await post("/api/account-email", { action: "requestReset", email: "missing@ci.example", userId: "access-owner" })).status, 400);
   assert.equal((await fetch(base + "/dashboard", { redirect: "manual" })).status, 307);
   assert.equal((await fetch(base + "/notifications", { redirect: "manual" })).status, 307);
+  const returnTo = "/classes?class=fixture-class&task=fixture-task";
+  const guestClass = await fetch(base + returnTo, { redirect: "manual" });
+  assert.equal(guestClass.status, 307);
+  assert.equal(new URL(guestClass.headers.get("location"), base).searchParams.get("return_to"), returnTo);
   assert.equal((await fetch(base + "/api/notifications", { headers: { "oai-authenticated-user-id": "access-owner" } })).status, 401);
   assert.equal((await fetch(base + "/api/access", { headers: { "oai-authenticated-user-id": "access-owner", "oai-authenticated-user-email": "owner@fake.example", "x-forwarded-user": "owner" } })).status, 401);
   assert.equal((await post("/api/auth", { action: "login", email: "operator@ci.example", password: "CI-owner-passphrase-unique-only" }, null, { Origin: "https://evil.example" })).status, 403);
@@ -73,7 +77,8 @@ try {
   const learner = session(login);
   assert.equal((await login.json()).redirect, "/access");
   assert.equal((await fetch(base + "/api/account", { headers: { Cookie: learner } })).status, 403);
-  assert.equal((await post("/api/account", { action: "enroll", courseId: course }, learner)).status, 200);
+  // Pending accounts cannot perform a new personal learning mutation (T2).
+  assert.equal((await post("/api/account", { action: "enroll", courseId: course }, learner)).status, 403);
   assert.equal((await post("/api/registration", { enabled: false }, learner)).status, 403);
   assert.equal((await fetch(base + "/api/tutors", { headers: { Cookie: learner } })).status, 403);
   assert.equal((await fetch(base + "/api/email-settings", { headers: { Cookie: learner } })).status, 403);
@@ -83,10 +88,25 @@ try {
   const approved = await post("/api/access", { userId: pending.user.id, version: pending.version, status: "active", reason: "CI HTTP approval" }, owner);
   assert.equal(approved.status, 200);
   const account = await fetch(base + "/api/account", { headers: { Cookie: learner } });
-  assert.equal(account.status, 200); assert.match(account.headers.get("cache-control"), /no-store/);
+  assert.equal(account.status, 200, account.status === 200 ? undefined : String((await account.clone().json()).error)); assert.match(account.headers.get("cache-control"), /no-store/);
   const data = await account.json();
   assert.equal(data.user.email, "web-learner@ci.example");
   assert.equal(data.user.role, "student");
+  const resumed = await post("/api/auth", { action: "login", email: "web-learner@ci.example", password: "CI-web-learner-passphrase-only", returnTo });
+  assert.equal(resumed.status, 200);
+  assert.equal((await resumed.json()).redirect, returnTo);
+  const resumedCookie = session(resumed);
+  assert.equal((await (await fetch(base + "/api/account", { headers: { Cookie: resumedCookie } })).json()).user.id, data.user.id);
+  let profile = data.profile;
+  for (let round = 1; round <= 3; round++) {
+    const input = { ...profile, bio: `Disposable reliability check ${round}` };
+    assert.equal((await post("/api/account", { action: "saveProfile", profile: input }, learner)).status, 200);
+    profile = (await (await fetch(base + "/api/account", { headers: { Cookie: learner } })).json()).profile;
+    assert.equal(profile.bio, input.bio);
+    assert.equal(profile.version, input.version + 1);
+    assert.equal((await post("/api/account", { action: "saveProfile", profile: input }, learner)).status, 409);
+    assert.equal((await (await fetch(base + "/api/account", { headers: { Cookie: learner } })).json()).profile.version, profile.version);
+  }
   const notificationResponse = await fetch(base + "/api/notifications", { headers: { Cookie: learner } });
   assert.equal(notificationResponse.status, 200);
   assert.match(notificationResponse.headers.get("cache-control"), /no-store/);
@@ -125,7 +145,12 @@ try {
   assert.equal((await post("/api/registration", { enabled: false }, tutorCookie)).status, 403);
   assert.equal((await post("/api/studio", { action: "saveCourse", course: {} }, tutorCookie)).status, 403);
   assert.equal((await post("/api/tutors", { action: "revokeTutor", userId: tutorData.user.id, reason: "CI HTTP revocation" }, owner)).status, 200);
-  assert.equal((await (await fetch(base + "/api/account", { headers: { Cookie: tutorCookie } })).json()).user.role, "student");
+  const revokedTutor = await (await fetch(base + "/api/account", { headers: { Cookie: tutorCookie } })).json();
+  assert.equal(revokedTutor.user.role, "staff");
+  assert.equal(revokedTutor.user.kind, "staff");
+  assert.deepEqual(revokedTutor.courses, []);
+  assert.equal((await post("/api/account", { action: "enroll", courseId: course }, tutorCookie)).status, 403);
+  assert.equal((await post("/api/studio", { action: "complete", courseId: course, lessonId: "embedded", revision: 1, requestId: "f29d0b79-30ce-4a63-a7bf-c9e2b3592db0" }, tutorCookie)).status, 403);
   assert.equal((await fetch(base + "/practice-runner.html")).status, 200);
   const logoutPage = await fetch(base + "/logout", { headers: { Cookie: owner } });
   assert.equal(logoutPage.status, 200);

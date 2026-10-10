@@ -41,6 +41,7 @@ export const enrollments = mysqlTable(
     userId: varchar("user_id", { length: 191 }).notNull(),
     courseId: varchar("course_id", { length: 191 }).notNull(),
     createdAt: varchar("created_at", { length: 32 }).notNull(),
+    authorizationId: varchar("authorization_id", { length: 48 }).notNull().default(""),
   },
   (t) => [primaryKey({ columns: [t.userId, t.courseId] })],
 );
@@ -129,6 +130,8 @@ export const cohorts = mysqlTable("cohorts", {
   id: varchar("id", { length: 191 }).primaryKey(),
   courseId: varchar("course_id", { length: 191 }).notNull(),
   mentorId: varchar("mentor_id", { length: 191 }),
+  mentorGrantVersion: int("mentor_grant_version").notNull().default(1),
+  assignmentProof: varchar("assignment_proof",{length:80}).notNull().default(""),
   name: longtext("name").notNull(),
   description: longtext("description").notNull().default(""),
   startsAt: varchar("starts_at", { length: 32 }),
@@ -144,6 +147,7 @@ export const cohortMembers = mysqlTable(
     classId: varchar("class_id", { length: 191 }).notNull(),
     userId: varchar("user_id", { length: 191 }).notNull(),
     status: varchar("status", { length: 32 }).notNull(),
+    authorizationVersion: int("authorization_version").notNull().default(1),
     createdAt: varchar("created_at", { length: 32 }).notNull(),
   },
   (t) => [
@@ -202,6 +206,9 @@ export const classAssignments = mysqlTable(
     id: varchar("id", { length: 191 }).primaryKey(),
     classId: varchar("class_id", { length: 191 }).notNull(),
     title: longtext("title").notNull(),
+    assessmentRevision: int("assessment_revision").notNull().default(1),
+    contentRevision: int("content_revision").notNull().default(1),
+    rubric: longtext("rubric").notNull().default(""),
     instructions: longtext("instructions").notNull(),
     dueAt: varchar("due_at", { length: 32 }),
     status: varchar("status", { length: 32 }).notNull(),
@@ -218,6 +225,10 @@ export const projectSubmissions = mysqlTable(
     studentId: varchar("student_id", { length: 191 }).notNull(),
     attempt: int("attempt").notNull(),
     assignmentVersion: int("assignment_version").notNull(),
+    assessmentRevision: int("assessment_revision").notNull().default(0),
+    lessonRevision: int("lesson_revision").notNull().default(0),
+    requirementRevision: int("requirement_revision").notNull().default(0),
+    snapshot: longtext("snapshot").notNull().default("{}"),
     instructions: longtext("instructions").notNull(),
     body: longtext("body").notNull(),
     url: longtext("url").notNull(),
@@ -231,6 +242,7 @@ export const projectSubmissions = mysqlTable(
     version: int("version").notNull().default(1),
   },
   (t) => [
+    uniqueIndex("academic_submission_attempt").on(t.assignmentId,t.studentId,t.attempt),
     index("submissions_assignment_student").on(
       t.assignmentId,
       t.studentId,
@@ -295,6 +307,7 @@ export const tutorInvitations = mysqlTable("tutor_invitations", {
   email: varchar("email", { length: 254 }).notNull(),
   displayName: longtext("display_name").notNull(),
   classId: varchar("class_id", { length: 191 }),
+  capability: varchar("capability", {length:32}).notNull().default("tutor"), courseId: varchar("course_id", {length:191}),
   createdBy: varchar("created_by", { length: 191 }).notNull(),
   createdAt: varchar("created_at", { length: 32 }).notNull(),
   expiresAt: bigint("expires_at", { mode: "number" }).notNull(),
@@ -359,6 +372,7 @@ export const mediaFiles = mysqlTable("media_files", {
 export const curriculumMembers = mysqlTable("curriculum_members", {
   courseId: varchar("course_id", {length:191}).notNull(), userId: varchar("user_id", {length:191}).notNull(),
   proof: varchar("proof", {length:191}).notNull(),
+  grantVersion: int("grant_version").notNull().default(1),
   active: int("active").notNull(), version: int("version").notNull(),
   grantedBy: varchar("granted_by", {length:191}).notNull(), updatedAt: varchar("updated_at", {length:191}).notNull(),
 }, t => [primaryKey({columns:[t.courseId,t.userId]})]);
@@ -373,3 +387,102 @@ export const curriculumEvents = mysqlTable("curriculum_events", {
   actorId: varchar("actor_id", {length:191}).notNull(), kind: varchar("kind", {length:191}).notNull(),
   detail: longtext("detail").notNull(), createdAt: varchar("created_at", {length:191}).notNull(),
 }, t => [index("curriculum_events_course_time").on(t.courseId,t.createdAt)]);
+
+// Durable account category and independent staff capabilities. users.role is display-only.
+export const accountPrincipals = mysqlTable("account_principals", {
+  userId: varchar("user_id", { length: 191 }).primaryKey().references(() => users.id),
+  kind: varchar("kind", { length: 32 }).notNull(),
+  version: int("version").notNull().default(1),
+  updatedBy: varchar("updated_by", { length: 191 }).notNull(),
+  updatedAt: varchar("updated_at", { length: 32 }).notNull(),
+  proof: varchar("proof", { length: 80 }).notNull(),
+});
+export const staffGrants = mysqlTable("staff_grants", {
+  userId: varchar("user_id", { length: 191 }).notNull().references(() => users.id),
+  capability: varchar("capability", { length: 32 }).notNull(),
+  active: int("active").notNull().default(0),
+  version: int("version").notNull().default(1),
+  grantedBy: varchar("granted_by", { length: 191 }).notNull(),
+  updatedAt: varchar("updated_at", { length: 32 }).notNull(),
+  proof: varchar("proof", { length: 80 }).notNull(),
+}, t => [primaryKey({columns:[t.userId,t.capability]}), index("staff_grants_capability_idx").on(t.capability,t.active,t.userId)]);
+export const authorizationEvents = mysqlTable("authorization_events", {
+  id: varchar("id", { length: 80 }).primaryKey(),
+  actorId: varchar("actor_id", { length: 191 }).notNull(),
+  targetId: varchar("target_id", { length: 191 }).notNull(),
+  kind: varchar("kind", { length: 32 }).notNull(),
+  capability: varchar("capability", { length: 32 }),
+  scopeId: varchar("scope_id", { length: 191 }),
+  reason: longtext("reason").notNull(),
+  data: longtext("data").notNull(),
+  createdAt: varchar("created_at", { length: 32 }).notNull(),
+}, t => [index("authorization_events_target_idx").on(t.targetId,t.createdAt)]);
+
+export const learningProgressRevisions = mysqlTable("learning_progress_revisions", {
+  userId: varchar("user_id", {length:191}).notNull(),
+  courseId: varchar("course_id", {length:191}).notNull(),
+  lessonId: varchar("lesson_id", {length:191}).notNull(),
+  revision: int("revision").notNull(),
+  complete: int("complete").notNull().default(0),
+  quizPassed: int("quiz_passed").notNull().default(0),
+  codePassed: int("code_passed").notNull().default(0),
+  quizAttempts: int("quiz_attempts").notNull().default(0),
+  codeAttempts: int("code_attempts").notNull().default(0),
+  score: int("score").notNull().default(0),
+  version: int("version").notNull().default(1),
+  quizEvidenceId: varchar("quiz_evidence_id", {length:191}),
+  codeEvidenceId: varchar("code_evidence_id", {length:191}),
+  provenance: varchar("provenance", {length:80}).notNull().default("native"),
+}, t => [primaryKey({name:"academic_progress_pk",columns:[t.userId,t.courseId,t.lessonId,t.revision]}),]);
+
+export const classAssignmentRequirements = mysqlTable("class_assignment_requirements", {
+  classId: varchar("class_id", {length:191}).notNull(),
+  requirementId: varchar("requirement_id", {length:191}).notNull(),
+  courseId: varchar("course_id", {length:191}).notNull(),
+  lessonId: varchar("lesson_id", {length:191}).notNull(),
+  assignmentId: varchar("assignment_id", {length:191}).notNull(),
+  requirementRevision: int("requirement_revision").notNull(),
+  version: int("version").notNull().default(1),
+}, t => [primaryKey({columns:[t.classId,t.requirementId]}),uniqueIndex("academic_binding_assignment").on(t.assignmentId)]);
+
+export const assignmentRevisions = mysqlTable("assignment_revisions", {
+  assignmentId: varchar("assignment_id", {length:191}).notNull(),
+  version: int("version").notNull(),
+  assessmentRevision: int("assessment_revision").notNull(),
+  contentRevision: int("content_revision").notNull(),
+  data: longtext("data").notNull(),
+  actorId: varchar("actor_id", {length:191}).notNull(),
+  createdAt: varchar("created_at", {length:80}).notNull(),
+}, t => [primaryKey({columns:[t.assignmentId,t.version]}),]);
+
+export const projectReviews = mysqlTable("project_reviews", {
+  id: varchar("id", {length:191}).notNull(),
+  submissionId: varchar("submission_id", {length:191}).notNull(),
+  sequence: int("sequence").notNull(),
+  reviewerId: varchar("reviewer_id", {length:191}).notNull(),
+  reviewerName: longtext("reviewer_name").notNull(),
+  status: varchar("status", {length:80}).notNull(),
+  score: int("score"),
+  feedback: longtext("feedback").notNull(),
+  snapshot: longtext("snapshot").notNull(),
+  requestId: varchar("request_id", {length:191}).notNull(),
+  createdAt: varchar("created_at", {length:80}).notNull(),
+}, t => [primaryKey({columns:[t.id]}),uniqueIndex("academic_review_sequence").on(t.submissionId,t.sequence),uniqueIndex("academic_review_request").on(t.reviewerId,t.requestId)]);
+
+export const academicChangeEvents = mysqlTable("academic_change_events", {
+  id: varchar("id", {length:191}).notNull(),
+  actorId: varchar("actor_id", {length:191}).notNull(),
+  objectId: varchar("object_id", {length:191}).notNull(),
+  kind: varchar("kind", {length:80}).notNull(),
+  data: longtext("data").notNull(),
+  createdAt: varchar("created_at", {length:80}).notNull(),
+}, t => [primaryKey({columns:[t.id]}),]);
+
+export const academicMutationReceipts = mysqlTable("academic_mutation_receipts", {
+  actorId: varchar("actor_id", {length:191}).notNull(),
+  action: varchar("action", {length:80}).notNull(),
+  requestId: varchar("request_id", {length:191}).notNull(),
+  digest: varchar("digest", {length:80}).notNull(),
+  result: longtext("result").notNull(),
+  createdAt: varchar("created_at", {length:80}).notNull(),
+}, t => [primaryKey({columns:[t.actorId,t.action,t.requestId]}),]);

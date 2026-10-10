@@ -32,7 +32,8 @@ export const tutorAccounts = sqliteTable("tutor_accounts", {
 });
 export const tutorInvitations = sqliteTable("tutor_invitations", {
   id: text("id").primaryKey(), tokenHash: text("token_hash").notNull().unique(), email: text("email").notNull(),
-  displayName: text("display_name").notNull(), classId: text("class_id"), createdBy: text("created_by").notNull(),
+  displayName: text("display_name").notNull(), classId: text("class_id"),
+  capability: text("capability").notNull().default("tutor"), courseId: text("course_id"), createdBy: text("created_by").notNull(),
   createdAt: text("created_at").notNull(), expiresAt: integer("expires_at").notNull(), acceptedUserId: text("accepted_user_id"),
   acceptedAt: text("accepted_at"), activationId: text("activation_id"), revokedAt: text("revoked_at"),
 }, (t) => [index("tutor_invitation_email_idx").on(t.email)]);
@@ -61,6 +62,7 @@ export const enrollments = sqliteTable(
     userId: text("user_id").notNull(),
     courseId: text("course_id").notNull(),
     createdAt: text("created_at").notNull(),
+    authorizationId: text("authorization_id").notNull().default(""),
   },
   (t) => [primaryKey({ columns: [t.userId, t.courseId] })],
 );
@@ -149,6 +151,8 @@ export const cohorts = sqliteTable("cohorts", {
   id: text("id").primaryKey(),
   courseId: text("course_id").notNull(),
   mentorId: text("mentor_id"),
+  mentorGrantVersion: integer("mentor_grant_version").notNull().default(1),
+  assignmentProof: text("assignment_proof").notNull().default(""),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
   startsAt: text("starts_at"),
@@ -164,6 +168,7 @@ export const cohortMembers = sqliteTable(
     classId: text("class_id").notNull(),
     userId: text("user_id").notNull(),
     status: text("status").notNull(),
+    authorizationVersion: integer("authorization_version").notNull().default(1),
     createdAt: text("created_at").notNull(),
   },
   (t) => [
@@ -222,6 +227,9 @@ export const classAssignments = sqliteTable(
     id: text("id").primaryKey(),
     classId: text("class_id").notNull(),
     title: text("title").notNull(),
+    assessmentRevision: integer("assessment_revision").notNull().default(1),
+    contentRevision: integer("content_revision").notNull().default(1),
+    rubric: text("rubric").notNull().default(""),
     instructions: text("instructions").notNull(),
     dueAt: text("due_at"),
     status: text("status").notNull(),
@@ -238,6 +246,10 @@ export const projectSubmissions = sqliteTable(
     studentId: text("student_id").notNull(),
     attempt: integer("attempt").notNull(),
     assignmentVersion: integer("assignment_version").notNull(),
+    assessmentRevision: integer("assessment_revision").notNull().default(0),
+    lessonRevision: integer("lesson_revision").notNull().default(0),
+    requirementRevision: integer("requirement_revision").notNull().default(0),
+    snapshot: text("snapshot").notNull().default("{}"),
     instructions: text("instructions").notNull(),
     body: text("body").notNull(),
     url: text("url").notNull(),
@@ -251,6 +263,7 @@ export const projectSubmissions = sqliteTable(
     version: integer("version").notNull().default(1),
   },
   (t) => [
+    uniqueIndex("academic_submission_attempt").on(t.assignmentId,t.studentId,t.attempt),
     index("submissions_assignment_student").on(
       t.assignmentId,
       t.studentId,
@@ -309,6 +322,7 @@ export const mediaFiles = sqliteTable("media_files", {
 export const curriculumMembers = sqliteTable("curriculum_members", {
   courseId: text("course_id").notNull(), userId: text("user_id").notNull(),
   proof: text("proof").notNull(),
+  grantVersion: integer("grant_version").notNull().default(1),
   active: integer("active").notNull(), version: integer("version").notNull(),
   grantedBy: text("granted_by").notNull(), updatedAt: text("updated_at").notNull(),
 }, t => [primaryKey({columns:[t.courseId,t.userId]})]);
@@ -323,3 +337,102 @@ export const curriculumEvents = sqliteTable("curriculum_events", {
   actorId: text("actor_id").notNull(), kind: text("kind").notNull(),
   detail: text("detail").notNull(), createdAt: text("created_at").notNull(),
 }, t => [index("curriculum_events_course_time").on(t.courseId,t.createdAt)]);
+
+// Durable account category and independent staff capabilities. users.role is display-only.
+export const accountPrincipals = sqliteTable("account_principals", {
+  userId: text("user_id").primaryKey().references(() => users.id),
+  kind: text("kind").notNull(),
+  version: integer("version").notNull().default(1),
+  updatedBy: text("updated_by").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  proof: text("proof").notNull(),
+});
+export const staffGrants = sqliteTable("staff_grants", {
+  userId: text("user_id").notNull().references(() => users.id),
+  capability: text("capability").notNull(),
+  active: integer("active").notNull().default(0),
+  version: integer("version").notNull().default(1),
+  grantedBy: text("granted_by").notNull(),
+  updatedAt: text("updated_at").notNull(),
+  proof: text("proof").notNull(),
+}, t => [primaryKey({columns:[t.userId,t.capability]}), index("staff_grants_capability_idx").on(t.capability,t.active,t.userId)]);
+export const authorizationEvents = sqliteTable("authorization_events", {
+  id: text("id").primaryKey(),
+  actorId: text("actor_id").notNull(),
+  targetId: text("target_id").notNull(),
+  kind: text("kind").notNull(),
+  capability: text("capability"),
+  scopeId: text("scope_id"),
+  reason: text("reason").notNull(),
+  data: text("data").notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [index("authorization_events_target_idx").on(t.targetId,t.createdAt)]);
+
+export const learningProgressRevisions = sqliteTable("learning_progress_revisions", {
+  userId: text("user_id").notNull(),
+  courseId: text("course_id").notNull(),
+  lessonId: text("lesson_id").notNull(),
+  revision: integer("revision").notNull(),
+  complete: integer("complete").notNull().default(0),
+  quizPassed: integer("quiz_passed").notNull().default(0),
+  codePassed: integer("code_passed").notNull().default(0),
+  quizAttempts: integer("quiz_attempts").notNull().default(0),
+  codeAttempts: integer("code_attempts").notNull().default(0),
+  score: integer("score").notNull().default(0),
+  version: integer("version").notNull().default(1),
+  quizEvidenceId: text("quiz_evidence_id"),
+  codeEvidenceId: text("code_evidence_id"),
+  provenance: text("provenance").notNull().default("native"),
+}, t => [primaryKey({columns:[t.userId,t.courseId,t.lessonId,t.revision]}),]);
+
+export const classAssignmentRequirements = sqliteTable("class_assignment_requirements", {
+  classId: text("class_id").notNull(),
+  requirementId: text("requirement_id").notNull(),
+  courseId: text("course_id").notNull(),
+  lessonId: text("lesson_id").notNull(),
+  assignmentId: text("assignment_id").notNull(),
+  requirementRevision: integer("requirement_revision").notNull(),
+  version: integer("version").notNull().default(1),
+}, t => [primaryKey({columns:[t.classId,t.requirementId]}),uniqueIndex("academic_binding_assignment").on(t.assignmentId)]);
+
+export const assignmentRevisions = sqliteTable("assignment_revisions", {
+  assignmentId: text("assignment_id").notNull(),
+  version: integer("version").notNull(),
+  assessmentRevision: integer("assessment_revision").notNull(),
+  contentRevision: integer("content_revision").notNull(),
+  data: text("data").notNull(),
+  actorId: text("actor_id").notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [primaryKey({columns:[t.assignmentId,t.version]}),]);
+
+export const projectReviews = sqliteTable("project_reviews", {
+  id: text("id").notNull(),
+  submissionId: text("submission_id").notNull(),
+  sequence: integer("sequence").notNull(),
+  reviewerId: text("reviewer_id").notNull(),
+  reviewerName: text("reviewer_name").notNull(),
+  status: text("status").notNull(),
+  score: integer("score"),
+  feedback: text("feedback").notNull(),
+  snapshot: text("snapshot").notNull(),
+  requestId: text("request_id").notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [primaryKey({columns:[t.id]}),uniqueIndex("academic_review_sequence").on(t.submissionId,t.sequence),uniqueIndex("academic_review_request").on(t.reviewerId,t.requestId)]);
+
+export const academicChangeEvents = sqliteTable("academic_change_events", {
+  id: text("id").notNull(),
+  actorId: text("actor_id").notNull(),
+  objectId: text("object_id").notNull(),
+  kind: text("kind").notNull(),
+  data: text("data").notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [primaryKey({columns:[t.id]}),]);
+
+export const academicMutationReceipts = sqliteTable("academic_mutation_receipts", {
+  actorId: text("actor_id").notNull(),
+  action: text("action").notNull(),
+  requestId: text("request_id").notNull(),
+  digest: text("digest").notNull(),
+  result: text("result").notNull(),
+  createdAt: text("created_at").notNull(),
+}, t => [primaryKey({columns:[t.actorId,t.action,t.requestId]}),]);

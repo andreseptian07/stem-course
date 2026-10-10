@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { createMariaDb } from "../db/mariadb.ts";
 import { applyMariaDbMigrations } from "../db/mariadb-migrate.ts";
 import { users, courses, attempts } from "../db/mariadb-schema.ts";
+import {graduationActivation} from './graduation-acceptance.mjs';
 
 test("MariaDB foundation on a disposable CI database", {
   skip: process.env.MARIADB_INTEGRATION_TEST !== "true",
@@ -13,14 +14,29 @@ test("MariaDB foundation on a disposable CI database", {
   const { pool, db, database } = createMariaDb();
   try {
     await t.test("new database receives the schema and migration journal", async () => {
-      assert.equal(await applyMariaDbMigrations(pool), 9);
+      assert.equal(await applyMariaDbMigrations(pool),15);
       const [tables] = await pool.query("SELECT TABLE_NAME AS name, ENGINE AS engine, TABLE_COLLATION AS collation FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE()");
-      assert.equal(tables.length, 35);
+      assert.equal(tables.length,44);
       const business = tables.filter((row) => row.name !== "__stem_mariadb_migrations");
-      assert.equal(business.length, 34);
+      assert.equal(business.length,43);
       for (const table of business) {
         assert.equal(table.engine, "InnoDB");
         assert.equal(table.collation, "utf8mb4_bin");
+      }
+    });
+    await graduationActivation(t,database);
+    await t.test("legacy duplicate preflight refuses unique migration without deleting evidence",async()=>{
+      const [journal]=await pool.query("SELECT * FROM __stem_mariadb_migrations ORDER BY created_at DESC LIMIT 1");const last=journal[0];
+      await pool.query("ALTER TABLE project_submissions DROP INDEX academic_submission_attempt");
+      try{
+        for(const id of ["duplicate-one","duplicate-two"])await pool.execute("INSERT INTO project_submissions(id,assignment_id,student_id,attempt,assignment_version,instructions,body,url,submitted_at) VALUES(?,'legacy-task','legacy-student',1,1,'Original','Original','','2026-10-10')",[id]);
+        await pool.execute("DELETE FROM __stem_mariadb_migrations WHERE id=?",[last.id]);
+        await assert.rejects(()=>applyMariaDbMigrations(pool),/Duplikasi percobaan/);
+        const [[count]]=await pool.query("SELECT count(*) AS n FROM project_submissions WHERE assignment_id='legacy-task'");assert.equal(Number(count.n),2);
+      }finally{
+        await pool.query("DELETE FROM project_submissions WHERE assignment_id='legacy-task'");
+        await pool.execute("INSERT IGNORE INTO __stem_mariadb_migrations(id,hash,created_at) VALUES(?,?,?)",[last.id,last.hash,last.created_at]);
+        await pool.query("ALTER TABLE project_submissions ADD CONSTRAINT academic_submission_attempt UNIQUE(assignment_id,student_id,attempt)");
       }
     });
     await t.test("hosting collation overrides are normalized on reused read and write connections", async () => {
@@ -71,7 +87,7 @@ test("MariaDB foundation on a disposable CI database", {
       assert.equal(await applyMariaDbMigrations(pool), 0);
       assert.equal((await db.select().from(users)).length, 2);
       const [rows] = await pool.query("SELECT COUNT(*) AS count FROM __stem_mariadb_migrations");
-      assert.equal(Number(rows[0].count), 9);
+      assert.equal(Number(rows[0].count),15);
       // A changed/unknown migration history is refused rather than reapplied.
       const [journal] = await pool.query("SELECT id,hash FROM __stem_mariadb_migrations");
       try {

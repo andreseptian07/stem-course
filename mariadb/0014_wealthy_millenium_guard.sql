@@ -1,0 +1,1 @@
+ALTER TABLE `project_submissions` ADD CONSTRAINT `academic_submission_attempt` UNIQUE(`assignment_id`,`student_id`,`attempt`);

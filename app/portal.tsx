@@ -1,12 +1,11 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   BookOpen,
   Layers3,
   Search,
   Clock3,
   Code2,
-  CalendarDays,
   Users,
   SlidersHorizontal,
   Check,
@@ -22,6 +21,7 @@ import {
 } from "lucide-react";
 import type { CatalogCourse, CatalogState } from "@/lib/catalog";
 import NotificationLink from "./notification-link";
+import Link from "next/link";
 import "./portal.css";
 const format = (c: CatalogCourse) =>
   c.overview.format === "blended" ? "Mandiri + sesi mentor" : "Belajar mandiri";
@@ -58,7 +58,7 @@ function CategoryIcon({
 }
 function CourseCard({ course: c }: { course: CatalogCourse }) {
   return (
-    <a className="catalog-card" href={courseUrl(c.id)}>
+    <Link className="catalog-card" href={courseUrl(c.id)}>
       <div className="catalog-cover">
         <CategoryIcon category={c.category} size={42} />
         <span>{c.category || "STEM"}</span>
@@ -83,7 +83,7 @@ function CourseCard({ course: c }: { course: CatalogCourse }) {
         </div>
         <div className="catalog-card-link">Lihat detail course</div>
       </div>
-    </a>
+    </Link>
   );
 }
 function EmptyCourses() {
@@ -92,9 +92,9 @@ function EmptyCourses() {
       <BookOpen size={30} />
       <h3>Course sedang disiapkan</h3>
       <p>Course akan tampil di sini setelah pengajar menerbitkannya.</p>
-      <a className="secondary button-link" href="/learn">
+      <Link className="secondary button-link" href="/learn">
         Masuk ke ruang belajar
-      </a>
+      </Link>
     </div>
   );
 }
@@ -111,20 +111,21 @@ export default function Portal({
     [category, setCategory] = useState(""),
     [level, setLevel] = useState(""),
     [mode, setMode] = useState("");
-  async function load() {
+  const load = useCallback(async () => {
     setError("");
     try {
-      const r = await fetch("/api/catalog", { cache: "no-store" });
+      const r = await fetch("/api/catalog" + (view === "detail" && courseId ? "?course=" + encodeURIComponent(courseId) : ""), { cache: "no-store" });
       const d = (await r.json()) as CatalogState & { error?: string };
       if (!r.ok) throw new Error(d.error || "Katalog belum dapat dimuat.");
       setData(d);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Katalog belum dapat dimuat.");
     }
-  }
+  }, [view, courseId]);
   useEffect(() => {
-    void load();
-  }, []);
+    const startup = setTimeout(() => void load(), 0);
+    return () => clearTimeout(startup);
+  }, [load]);
   const courses = data?.courses || [];
   const current = courses.find((c) => c.id === courseId);
   const filtered = courses.filter(
@@ -146,34 +147,36 @@ export default function Portal({
   const loading = !data && !error;
   return (
     <div className="portal">
-      <a className="portal-skip" href="#portal-content">
+      <Link className="portal-skip" href="#portal-content">
         Lewati ke konten
-      </a>
+      </Link>
       <header className="portal-header">
-        <a className="portal-brand" href="/" aria-label="Ruang STEM beranda">
+        <Link className="portal-brand" href="/" aria-label="Ruang STEM beranda">
           <span>
             <Layers3 size={24} />
           </span>
           <b>
             Ruang<span> STEM</span>
           </b>
-        </a>
+        </Link>
         <nav aria-label="Navigasi utama">
-          <a className={view === "home" ? "selected" : ""} aria-current={view === "home" ? "page" : undefined} href="/">
+          <Link className={view === "home" ? "selected" : ""} aria-current={view === "home" ? "page" : undefined} href="/">
             Beranda
-          </a>
-          <a className={view !== "home" ? "selected" : ""} aria-current={view !== "home" ? "page" : undefined} href="/courses">
+          </Link>
+          <Link className={view !== "home" ? "selected" : ""} aria-current={view !== "home" ? "page" : undefined} href="/courses">
             Katalog course
-          </a>
-          <a href="/learn?view=sessions">Sesi Tutor</a>
+          </Link>
+          {data && <Link href={data.user?.kind === "staff" ? "/dashboard" : "/learn?view=sessions"}>{data.user?.kind === "staff" ? "Ruang kerja" : "Sesi Tutor"}</Link>}
         </nav>
         <div className="portal-auth-actions">
+          {loading ? <span role="status">Memuat akun…</span> : <>
           {data?.user && <NotificationLink />}
-          <a className="portal-login" href={data?.user ? "/dashboard" : "/login"}>
+          <Link className="portal-login" href={data?.user ? "/dashboard" : "/login"}>
             {data?.user ? <BookOpen size={17} /> : <LogIn size={17} />}{" "}
             {data?.user ? "Dashboard" : "Masuk"}
-          </a>
-          {data?.user ? <a className="portal-login portal-logout" href="/logout"><LogOut size={17} />Keluar</a> : <a className="portal-register" href="/register">Daftar</a>}
+          </Link>
+          {data?.user ? <Link className="portal-login portal-logout" href="/logout"><LogOut size={17} />Keluar</Link> : <Link className="portal-register" href="/register">Daftar</Link>}
+          </>}
         </div>
       </header>
       <main id="portal-content">
@@ -196,12 +199,12 @@ export default function Portal({
                     prosesnya bersama mentor.
                   </p>
                   <div className="hero-actions">
-                    <a className="primary button-link" href="/courses">
+                    <Link className="primary button-link" href="/courses">
                       Jelajahi course
-                    </a>
-                    <a className="hero-secondary" href="/learn">
+                    </Link>
+                    <Link className="hero-secondary" href="/learn">
                       Buka ruang belajar
-                    </a>
+                    </Link>
                   </div>
                   <div className="hero-notes">
                     <span>
@@ -259,9 +262,9 @@ export default function Portal({
                   <div className="eyebrow teal">TEMUKAN TITIK MULAI</div>
                   <h2>Course untuk langkah berikutnya</h2>
                 </div>
-                <a className="portal-text-link" href="/courses">
+                <Link className="portal-text-link" href="/courses">
                   Lihat semua course
-                </a>
+                </Link>
               </div>
               {loading ? (
                 <Loading />
@@ -428,9 +431,9 @@ export default function Portal({
               <BookOpen size={32} />
               <h1>Course belum tersedia</h1>
               <p>Course ini belum diterbitkan atau sudah tidak tersedia.</p>
-              <a className="primary button-link" href="/courses">
+              <Link className="primary button-link" href="/courses">
                 Kembali ke katalog
-              </a>
+              </Link>
             </section>
           ) : (
             <CourseDetail course={current} data={data!} />
@@ -439,21 +442,21 @@ export default function Portal({
       <footer className="portal-footer">
         <div className="portal-container">
           <div>
-            <a className="portal-brand" href="/">
+            <Link className="portal-brand" href="/">
               <span>
                 <Layers3 size={22} />
               </span>
               <b>
                 Ruang<span> STEM</span>
               </b>
-            </a>
+            </Link>
             <p>Belajar konsep. Berlatih. Bangun pemahaman.</p>
           </div>
           <nav aria-label="Navigasi footer">
-            <a href="/courses">Katalog course</a>
-            <a href="/learn">Ruang belajar</a>
+            <Link href="/courses">Katalog course</Link>
+            {data && <Link href={data.user?.kind === "staff" ? "/dashboard" : "/learn"}>{data.user?.kind === "staff" ? "Ruang kerja" : "Ruang belajar"}</Link>}
             {data?.user?.role === "owner" && (
-              <a href="/learn?view=admin">Kelola course</a>
+              <Link href="/learn?view=admin">Kelola course</Link>
             )}
           </nav>
           <span>© {new Date().getFullYear()} Ruang STEM</span>
@@ -491,9 +494,12 @@ function CourseDetail({
   const modules = Array.from(new Set(c.curriculum.map((l) => l.module)));
   const sessions = data.sessions.filter((s) => s.courseId === c.id);
   const [joining, setJoining] = useState(false), [joinError, setJoinError] = useState("");
+  const enrollmentInFlight = useRef(false);
   const login = `/login?return_to=${encodeURIComponent(learnUrl(c))}`;
   const register = `/register?return_to=${encodeURIComponent(learnUrl(c))}`;
   async function requestEnrollment() {
+    if (enrollmentInFlight.current) return;
+    enrollmentInFlight.current = true;
     setJoining(true); setJoinError("");
     try {
       const r = await fetch("/api/account", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "enroll", courseId: c.id }) });
@@ -501,14 +507,14 @@ function CourseDetail({
       if (!r.ok) throw new Error(result.error || "Pendaftaran course belum tersimpan.");
       location.assign(data.user?.accessStatus === "pending" ? "/access" : "/dashboard");
     } catch (e) { setJoinError(e instanceof Error ? e.message : "Pendaftaran course belum berhasil."); }
-    finally { setJoining(false); }
+    finally { enrollmentInFlight.current = false; setJoining(false); }
   }
   return (
     <>
       <section className="detail-hero">
         <div className="portal-container">
           <nav className="portal-breadcrumb" aria-label="Breadcrumb">
-            <a href="/courses">Katalog course</a>
+            <Link href="/courses">Katalog course</Link>
             <span>/</span>
             <span>{c.category || "STEM"}</span>
           </nav>
@@ -549,9 +555,9 @@ function CourseDetail({
       <div className="portal-container detail-body">
         <div className="detail-main">
           <nav className="detail-section-nav" aria-label="Bagian course">
-            <a href="#tujuan">Tujuan belajar</a>
-            <a href="#kurikulum">Kurikulum</a>
-            <a href="#mentor">Tutor & sesi</a>
+            <Link href="#tujuan">Tujuan belajar</Link>
+            <Link href="#kurikulum">Kurikulum</Link>
+            <Link href="#mentor">Tutor & sesi</Link>
           </nav>
           {c.sample && (
             <div className="detail-note">
@@ -727,20 +733,29 @@ function CourseDetail({
               </div>
             </dl>
             {!data.user ? <>
-              <a className="primary button-link" href={register}>Daftar course</a>
-              <a className="portal-text-link" href={login}>Sudah punya akun? Masuk</a>
+              <Link className="primary button-link" href={register}>Daftar course</Link>
+              <Link className="portal-text-link" href={login}>Sudah punya akun? Masuk</Link>
               <small>Akun Siswa dan pilihan course Anda disimpan. Akses belajar dibuka setelah persetujuan Super Admin.</small>
-            </> : data.user.accessStatus === "suspended" ? <a className="primary button-link" href="/access">Lihat status akun</a> : <>
+            </> : data.user.kind === "staff" ? <>
+              <Link className="primary button-link" href="/dashboard">Buka ruang kerja</Link>
+              <small>Akun staf mengelola pekerjaan melalui ruang kerja dan pratinjau sesuai izin.</small>
+            </> : !data.learning.ready ? <>
+              <Link className="primary button-link" href="/access">Lihat status akun</Link>
+              <small>Akses belajar tersedia setelah persyaratan akun terpenuhi.</small>
+            </> : data.learning.enrolledCourseIds.includes(c.id) ? <>
+              <Link className="primary button-link" href={data.learning.resumeHref || `/learn?course=${encodeURIComponent(c.id)}`}>Lanjutkan belajar</Link>
+              <small>Sudah terdaftar. Lanjutkan dari tahap belajar Anda.</small>
+            </> : <>
               <button className="primary" disabled={joining} onClick={requestEnrollment}>{joining ? "Mendaftarkan…" : "Daftar course"}</button>
-              <small>{data.user.accessStatus === "pending" ? "Pilihan course disimpan sambil menunggu persetujuan Super Admin." : "Course akan masuk ke dashboard belajar Anda."}</small>
+              <small>Course akan masuk ke dashboard belajar Anda.</small>
             </>}
             {joinError && <p className="error" role="alert">{joinError}</p>}
-            <a
+            {(!data.user || data.user.kind === "student") && <Link
               className="portal-text-link"
-              href={`/learn?view=sessions&course=${encodeURIComponent(c.id)}`}
+              href={!data.user || data.learning.ready ? `/learn?view=sessions&course=${encodeURIComponent(c.id)}` : "/access"}
             >
               Lihat jadwal mentor
-            </a>
+            </Link>}
           </div>
         </aside>
       </div>

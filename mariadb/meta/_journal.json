@@ -64,6 +64,48 @@
       "when": 1791433042031,
       "tag": "0008_green_sharon_carter",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "5",
+      "when": 1791516531646,
+      "tag": "0009_fearless_kitty_pryde",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "5",
+      "when": 1791517992762,
+      "tag": "0010_tense_bushwacker",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "5",
+      "when": 1791518095723,
+      "tag": "0011_dapper_infant_terrible",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "5",
+      "when": 1791518719375,
+      "tag": "0012_warm_spirit",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "5",
+      "when": 1791581849103,
+      "tag": "0013_open_omega_sentinel",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "5",
+      "when": 1791583154053,
+      "tag": "0014_wealthy_millenium_guard",
+      "breakpoints": true
     }
   ]
 }

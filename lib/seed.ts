@@ -2,6 +2,9 @@ import type { Course } from "./model";
 export const sampleCourse: Course = {
   id: "esp32-starter",
   version: 1,
+  graduationPolicyVersion: 2,
+  learningMode: "independent_allowed",
+  policyState: "ready",
   title: "Mulai membangun dengan ESP32",
   description:
     "Kenali sistem embedded, baca data sensor, dan susun proyek pertama Anda. Course contoh untuk mencoba platform.",

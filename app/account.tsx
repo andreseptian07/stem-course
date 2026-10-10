@@ -1,35 +1,18 @@
 "use client";
+import Link from "next/link";
+import {responseJson} from "@/lib/client-fetch";
+import {useUnsavedNavigation} from "./use-unsaved-navigation";
+import AccountFrame from "./account-frame";
+import type {NavigationUser} from "@/lib/account-navigation";
+
 import { PrivatePhoto, PhotoControl } from "./media-controls";
 import { useEffect, useRef, useState } from "react";
-import {
-  BookOpen,
-  Layers3,
-  LayoutDashboard,
-  UserRound,
-  CalendarDays,
-  LogOut,
-  Search,
-  GraduationCap,
-  CheckCircle2,
-  Clock3,
-  Video,
-  MapPin,
-  Save,
-  Loader2,
-  Check,
-  Settings2,
-  Users,
-  Menu,
-  ChevronDown,
-  RefreshCw,
-
-} from "lucide-react";
+import { BookOpen, CalendarDays, GraduationCap, CheckCircle2, Clock3, Video, MapPin, Save, Loader2, Check, RefreshCw } from "lucide-react";
 import type { AccountState, Profile, DashboardCourse } from "@/lib/account";
 import "./account.css";
 import ProjectSummary from "./project-summary";
 import TutorSummary from "./tutor-summary";
-import NotificationLink from "./notification-link";
-async function request(body?: unknown): Promise<any> {
+async function request<T = AccountState>(body?: unknown): Promise<T> {
   const r = await fetch(
     "/api/account",
     body
@@ -40,12 +23,7 @@ async function request(body?: unknown): Promise<any> {
         }
       : { cache: "no-store" },
   );
-  const d = (await r.json()) as any;
-  if (!r.ok)
-    throw Object.assign(new Error(d.error || "Permintaan belum berhasil."), {
-      status: r.status,
-    });
-  return d;
+  return responseJson<T>(r, !!body);
 }
 const interests = [
   "Sains",
@@ -70,16 +48,16 @@ const initials = (name: string) =>
     .join("")
     .toUpperCase() || "RS";
 const resumeLink = (c: DashboardCourse) =>
-  `/learn?course=${encodeURIComponent(c.id)}${c.resumeLesson ? `&lesson=${encodeURIComponent(c.resumeLesson)}` : ""}`;
+  `/learn?course=${encodeURIComponent(c.id)}${c.classId?`&class=${encodeURIComponent(c.classId)}`:""}${c.resumeLesson ? `&lesson=${encodeURIComponent(c.resumeLesson)}` : ""}`;
 export default function Account({
   view,
   join,
+  navigation,
 }: {
   view: "dashboard" | "profile";
   join?: string;
+  navigation: NavigationUser;
 }) {
-  const [mobileMenu, setMobileMenu] = useState(false);
-  const [dashboardMode, setDashboardMode] = useState(join ? "learning" : "teaching");
   const [refreshing, setRefreshing] = useState(false);
   const [data, setData] = useState<AccountState | null>(null),
     [error, setError] = useState(""),
@@ -122,15 +100,7 @@ export default function Account({
     window.addEventListener("beforeunload", prevent);
     return () => window.removeEventListener("beforeunload", prevent);
   }, [dirty]);
-  function guard(e: React.MouseEvent<HTMLAnchorElement>) {
-    if (
-      dirty &&
-      !confirm(
-        "Tinggalkan halaman dan abaikan perubahan profil yang belum disimpan?",
-      )
-    )
-      e.preventDefault();
-  }
+  const {guard,dialog: leaveDialog} = useUnsavedNavigation(dirty,()=>{if(data)setForm(data.profile);setDirty(false);},"Perubahan profil belum tersimpan. Tetap di halaman untuk menyimpan atau lanjutkan tanpa perubahan ini.");
   function patch(p: Partial<Profile>) {
     if (form) {
       setForm({ ...form, ...p });
@@ -166,7 +136,7 @@ export default function Account({
     setBusy(true);
     setError("");
     try {
-      const d = await request({ action: "saveProfile", profile: form });
+      const d = await request<{profile:Profile}>({ action: "saveProfile", profile: form });
       setForm(d.profile);
       setDirty(false);
       setSaved("Profil tersimpan.");
@@ -189,95 +159,17 @@ export default function Account({
     (c) =>
       filter === "all" || (filter === "finished" ? c.finished : !c.finished),
   );
-  const name = form?.displayName || data?.user.name || "Peserta";
-  const teaching = data?.teaching && dashboardMode === "teaching";
+  const name = form?.displayName || data?.user.name || navigation.name;
+  const learner=data ? data.user.kind === "student" && !data.user.owner : navigation.kind === "student" && !navigation.owner;
+  const teaching = data?.teaching && !learner;
   return (
-    <div className="account-app">
-      <a className="account-skip" href="#account-main">
-        Lewati ke konten
-      </a>
-      <header className="account-header">
-        <a className="account-brand" href="/" onClick={guard}>
-          <span>
-            <Layers3 size={24} />
-          </span>
-          <b>
-            Ruang<span> STEM</span>
-          </b>
-        </a>
-        <a href="/courses" onClick={guard}>
-          <Search size={17} />
-          Jelajahi course
-        </a>
-        <a className="account-user" href="/profile" aria-label="Buka profil saya" onClick={guard}>
-          <PrivatePhoto key={data?.photo?.id || "initials"} className={`account-avatar ${data?.profile.avatarColor || "teal"}`} url={data?.photo?.url || null} fallback={initials(data?.user.name || "RS")} />
-          <span>{data?.user.name || "Akun saya"}</span>
-        </a>
-        {data && <NotificationLink onClick={guard} />}
-        <a className="account-logout" href="/logout" onClick={guard}><LogOut size={18} />Keluar</a>
-      </header>
-      <div className="account-layout">
-        <aside className={`account-sidebar ${mobileMenu ? "mobile-nav-open" : ""}`}>
-          <span className="eyebrow">{data?.user.role === "owner" ? "RUANG SUPER ADMIN" : data?.user.role === "tutor" ? "RUANG TUTOR" : data?.curriculum ? "RUANG KURIKULUM" : "RUANG SISWA"}</span>
-          <button type="button" className="account-menu-toggle" aria-expanded={mobileMenu} aria-controls="account-navigation" onClick={() => setMobileMenu(!mobileMenu)}><Menu size={19} />Menu akun<ChevronDown size={17} /></button>
-          <nav id="account-navigation" aria-label="Navigasi akun">
-            <a
-              className={view === "dashboard" ? "selected" : ""}
-              aria-current={view === "dashboard" ? "page" : undefined}
-              href="/dashboard"
-              onClick={guard}
-            >
-              <LayoutDashboard size={19} />
-              Dashboard
-            </a>
-            <a
-              className={view === "profile" ? "selected" : ""}
-              aria-current={view === "profile" ? "page" : undefined}
-              href="/profile"
-              onClick={guard}
-            >
-              <UserRound size={19} />
-              Profil saya
-            </a>
-            {data?.curriculum && <a href="/curriculum" onClick={guard}><Layers3 size={19} />Tim Kurikulum</a>}
-            <a href="/certificates" onClick={guard}><CheckCircle2 size={19} />Sertifikat saya</a>
-            <a href="/classes" onClick={guard}>
-              <Users size={19} />
-              Kelas & Tutor
-            </a>
-            <a href="/access" onClick={guard}>
-              <Users size={19} />
-              {data?.user.role === "owner" ? "Kelola akses" : "Akses akun"}
-            </a>
-            <a href="/learn?view=sessions" onClick={guard}>
-              <CalendarDays size={19} />
-              Sesi Tutor
-            </a>
-            <a href="/courses" onClick={guard}>
-              <BookOpen size={19} />
-              Katalog course
-            </a>
-            {data?.user.role === "owner" && (
-              <a href="/learn?view=admin" onClick={guard}>
-                <Settings2 size={19} />
-                Kelola course
-              </a>
-            )}
-          </nav>
-          <div className="account-sidebar-bottom">
-            <p>
-              Satu langkah belajar,
-              <br />
-              satu pemahaman baru.
-            </p>
-          </div>
-        </aside>
-        <main id="account-main" className="account-main">
+    <AccountFrame user={{...navigation,name:data?.user.name || navigation.name}} current={view} onNavigate={guard}>
+      {leaveDialog}
           <div className="account-page-heading">
             <div>
               <div className="eyebrow teal">
                 {view === "dashboard"
-                  ? teaching ? "PENDAMPINGAN SISWA" : "PERJALANAN BELAJAR ANDA"
+                  ? !learner ? "RUANG KERJA ANDA" : "PERJALANAN BELAJAR ANDA"
                   : "PROFIL AKUN"}
               </div>
               <h1>
@@ -287,14 +179,14 @@ export default function Account({
               </h1>
               <p>
                 {view === "dashboard"
-                  ? teaching ? "Pantau kelas, tindak lanjuti pekerjaan siswa, dan siapkan sesi mengajar." : "Lanjutkan course Anda dan siapkan waktu untuk belajar bersama mentor."
-                  : "Lengkapi informasi dan tujuan belajar Anda."}
+                  ? !learner ? "Kelola pekerjaan sesuai izin dan penugasan Anda." : "Lanjutkan course Anda dan siapkan waktu untuk belajar bersama mentor."
+                  : learner ? "Lengkapi informasi dan tujuan belajar Anda." : "Lengkapi informasi profil kerja Anda."}
               </p>
             </div>
             {view === "dashboard" && data && <button type="button" className="secondary" onClick={reload} disabled={refreshing}><RefreshCw size={17} className={refreshing ? "spin" : undefined} />{refreshing ? "Memuat…" : "Muat ulang"}</button>}
             {view === "profile" && data && (
               <span className="pill">
-                {data.user.role === "owner" ? "Super Admin" : data.user.role === "tutor" ? "Tutor" : data.curriculum ? "Tim Kurikulum" : "Siswa"}
+                {data.user.role === "owner" ? "Super Admin" : data.user.role === "tutor" ? "Tutor" : data.curriculum ? "Tim Kurikulum" : learner ? "Siswa" : "Staf"}
               </span>
             )}
           </div>
@@ -321,11 +213,7 @@ export default function Account({
             )
           ) : view === "dashboard" ? (
             <>
-              {data.teaching && <div className="account-filter dashboard-modes" role="group" aria-label="Tampilan dashboard">
-                <button type="button" aria-pressed={dashboardMode === "teaching"} className={dashboardMode === "teaching" ? "selected" : ""} onClick={() => setDashboardMode("teaching")}>{data.user.role === "owner" ? "Pendampingan kelas" : "Dashboard Tutor"}</button>
-                <button type="button" aria-pressed={dashboardMode === "learning"} className={dashboardMode === "learning" ? "selected" : ""} onClick={() => setDashboardMode("learning")}>Belajar saya</button>
-              </div>}
-              {teaching ? <TutorSummary teaching={data.teaching!} owner={data.user.role === "owner"} /> : <>
+              {teaching ? <TutorSummary teaching={data.teaching!} owner={data.user.owner} /> : !learner ? <section className="account-empty"><h2>{data.curriculum ? "Ruang kerja Tim Kurikulum" : "Belum ada izin kerja aktif"}</h2><p>{data.curriculum ? "Buka course yang ditugaskan untuk menyusun dan meninjau materi." : "Hubungi Super Admin untuk memperoleh izin dan penugasan kerja."}</p>{data.curriculum && <Link className="primary button-link" href="/curriculum">Buka Tim Kurikulum</Link>}</section> : <>
               <section className="account-stats" aria-label="Ringkasan belajar">
                 <div>
                   <BookOpen />
@@ -337,7 +225,7 @@ export default function Account({
                   <strong>
                     {data.courses.reduce((n, c) => n + c.completed, 0)}
                   </strong>
-                  <span>Materi selesai</span>
+                  <span>Tahap lulus di seluruh kelas</span>
                 </div>
                 <div>
                   <GraduationCap />
@@ -403,7 +291,7 @@ export default function Account({
                         </p>
                         <div className="account-progress-label">
                           <span>
-                            {c.completed}/{c.lessonCount} materi selesai
+                            {c.completed}/{c.lessonCount} tahap lulus{c.classResults.length>1?" di seluruh kelas":""}
                           </span>
                           <strong>{c.percent}%</strong>
                         </div>
@@ -412,21 +300,22 @@ export default function Account({
                           value={c.completed}
                           max={c.lessonCount || 1}
                         />
+                        {c.classResults.map(result=><p key={result.classId} className="account-course-meta"><Link href={`/learn?course=${encodeURIComponent(c.id)}&class=${encodeURIComponent(result.classId||"")}`}>{result.className}: {result.completed}/{result.total} tahap lulus</Link></p>)}
                         {c.stale > 0 && (
                           <p className="account-stale">
                             {c.stale} materi berubah dan perlu ditinjau kembali.
                           </p>
                         )}
                         <div className="account-course-actions">
-                          <a
+                          <Link
                             className="primary button-link"
                             href={resumeLink(c)}
                           >
-                            {c.finished ? "Tinjau course" : "Lanjutkan belajar"}
-                          </a>
-                          <a href={`/courses/${encodeURIComponent(c.id)}`}>
+                            {c.graduation.problem?.code==="CLASS_CONTEXT_REQUIRED"?"Pilih kelas belajar":c.finished ? "Tinjau course" : "Lanjutkan belajar"}
+                          </Link>
+                          <Link href={`/courses/${encodeURIComponent(c.id)}`}>
                             Detail course
-                          </a>
+                          </Link>
                         </div>
                       </article>
                     ))}
@@ -444,7 +333,7 @@ export default function Account({
                         ? "Pilih filter Semua untuk melihat daftar course."
                         : "Jelajahi katalog, buka detail course, lalu pilih Daftar course."}
                     </p>
-                    {data.courses.length ? <button className="primary" type="button" onClick={() => setFilter("all")}>Tampilkan semua course saya</button> : <a className="primary button-link" href="/courses">Jelajahi course</a>}
+                    {data.courses.length ? <button className="primary" type="button" onClick={() => setFilter("all")}>Tampilkan semua course saya</button> : <Link className="primary button-link" href="/courses">Jelajahi course</Link>}
                   </div>
                 )}
               </section>
@@ -454,7 +343,7 @@ export default function Account({
                     <div className="eyebrow teal">BELAJAR BERSAMA</div>
                     <h2>Jadwal mentor saya</h2>
                   </div>
-                  <a href="/learn?view=sessions">Lihat semua sesi</a>
+                  <Link href="/learn?view=sessions">Lihat semua sesi</Link>
                 </div>
                 {data.sessions.length ? (
                   <div className="account-sessions">
@@ -485,16 +374,16 @@ export default function Account({
                           </small>
                         </div>
                         {s.kind === "online" ? (
-                          <a
+                          <Link
                             className="secondary button-link"
                             href={s.url}
                             target="_blank"
                             rel="noopener noreferrer"
                           >
                             Buka meeting
-                          </a>
+                          </Link>
                         ) : (
-                          <a
+                          <Link
                             className="secondary button-link"
                             href={
                               s.classId
@@ -503,7 +392,7 @@ export default function Account({
                             }
                           >
                             Lihat sesi
-                          </a>
+                          </Link>
                         )}
                       </article>
                     ))}
@@ -534,7 +423,7 @@ export default function Account({
                     <span className="pill">
                       {data.user.role === "owner"
                         ? "Pengelola platform"
-                        : "Peserta Ruang STEM"}
+                        : learner ? "Peserta Ruang STEM" : "Staf Ruang STEM"}
                     </span>
                     <div className="profile-colors">
                       <span>{data.photo ? "Warna avatar inisial" : "Warna avatar"}</span>
@@ -591,7 +480,7 @@ export default function Account({
                             value={data.user.email}
                             type="email"
                           />
-                          <small>Email akun tidak dapat diubah melalui halaman profil.</small><a href="/password">Ganti password</a>
+                          <small>Email akun tidak dapat diubah melalui halaman profil.</small><Link href="/password">Ganti password</Link>
                         </label>
                         <label className="profile-wide">
                           Institusi atau organisasi
@@ -617,6 +506,7 @@ export default function Account({
                         </label>
                       </div>
                     </section>
+                    {learner && (
                     <section>
                       <h2>Arah belajar</h2>
                       <fieldset>
@@ -655,6 +545,7 @@ export default function Account({
                         ditampilkan di profil akun Anda.
                       </p>
                     </section>
+                    )}
                     <div className="profile-save-bar">
                       <span>
                         {dirty
@@ -689,8 +580,6 @@ export default function Account({
               </form>
             )
           )}
-        </main>
-      </div>
-    </div>
+    </AccountFrame>
   );
 }

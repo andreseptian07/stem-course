@@ -1,3 +1,5 @@
+import {seedPrincipal} from "./authorization-fixture.mjs";
+import {databaseSql} from "../lib/database.ts";
 import assert from 'node:assert/strict';
 import sharp from 'sharp';
 import {randomUUID} from 'node:crypto';
@@ -15,7 +17,10 @@ export async function mediaScenarios(t,d) {
  let course,photo,document,image;
  try {
   for(const u of [owner,alice,bob]) await d.prepare('INSERT INTO users(id,name,role) VALUES(?,?,?)').bind(u.id,u.name,u.role).run();
+  await d.prepare(databaseSql(d,"INSERT INTO settings(key,value) VALUES('owner',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value","INSERT INTO settings(`key`,value) VALUES('owner',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")).bind(owner.id).run();
+  for(const u of [owner,alice,bob]){await d.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'active',1,'2026-10-09','2026-10-09')").bind(u.id).run();await seedPrincipal(d,u.id,u===owner?'staff':'student');}
   course=await saveCourse(d,owner,{...structuredClone(sampleCourse),id:prefix+'-course',version:0});
+  await d.prepare("INSERT INTO enrollments(user_id,course_id,created_at,authorization_id) VALUES(?,?,?,'fixture')").bind(alice.id,course.id,new Date().toISOString()).run();
   await t.test('profile images decode and normalize; replacements use compare-and-swap and preserve privacy',async()=>{
    photo=await uploadMedia(d,alice,{purpose:'avatar',previousId:null},'foto.png',png);
    assert.equal((await photoInfo(d,alice.id)).id,photo.id);
@@ -59,11 +64,12 @@ export async function mediaScenarios(t,d) {
   await t.test('direct document URLs honor required lessons, current revisions, publication and removed references',async()=>{
    assert.equal(publicCourse(course,[]).lessons.find(l=>l.id==='coding').blocks.length,0);
    await assert.rejects(readMedia(d,alice,document.id),e=>e.status===403);
+   const first=course.lessons[0];await initializeProgress(d,alice.id,course.id,first.id,first.revision);await d.prepare('UPDATE learning_progress_revisions SET complete=1 WHERE user_id=? AND course_id=? AND lesson_id=?').bind(alice.id,course.id,first.id).run();
    const sensor=course.lessons.find(l=>l.id==='sensor');
    await initializeProgress(d,alice.id,course.id,sensor.id,sensor.revision);
-   await d.prepare('UPDATE progress SET quiz_passed=1 WHERE user_id=? AND course_id=? AND lesson_id=?').bind(alice.id,course.id,sensor.id).run();
+   await d.prepare('UPDATE learning_progress_revisions SET quiz_passed=1,complete=1 WHERE user_id=? AND course_id=? AND lesson_id=?').bind(alice.id,course.id,sensor.id).run();
    assert.equal((await readMedia(d,alice,document.id)).mime,'application/pdf');
-   course.lessons.find(l=>l.id==='sensor').title+=' revised';course=await saveCourse(d,owner,course);
+   course.lessons.find(l=>l.id==='sensor').quiz.threshold=99;course=await saveCourse(d,owner,course);
    await assert.rejects(readMedia(d,alice,document.id),e=>e.status===403);
    course.published=false;course=await saveCourse(d,owner,course);
    await assert.rejects(readMedia(d,alice,image.id),e=>e.status===404);

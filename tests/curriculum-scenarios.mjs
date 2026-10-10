@@ -1,3 +1,6 @@
+import {seedPrincipal} from "./authorization-fixture.mjs";
+import {curriculumEnabled} from '../lib/curriculum-access.ts';
+import {applyCurriculumPatch} from '../lib/curriculum-state.ts';
 import assert from 'node:assert/strict';
 import {randomUUID} from 'node:crypto';
 import {mkdtemp,rm} from 'node:fs/promises';
@@ -26,21 +29,41 @@ export async function curriculumScenarios(t,d){
    await d.prepare("INSERT INTO user_access(user_id,status,version,created_at,updated_at) VALUES(?,'active',1,?,?)").bind(u.id,time,time).run();
   }
   await d.prepare(databaseSql(d,"INSERT INTO settings(`key`,value) VALUES('owner',?) ON CONFLICT(`key`) DO UPDATE SET value=excluded.value","INSERT INTO settings(`key`,value) VALUES('owner',?) ON DUPLICATE KEY UPDATE value=VALUES(value)")).bind(owner.id).run();
+  for(const [name,kind,caps] of [['owner','staff',[]],['tutor','staff',['tutor','curriculum']],['writer','staff',['curriculum']],['outsider','student',[]]])await seedPrincipal(d,people[name].id,kind,caps);
   course=await saveCourse(d,owner,{...structuredClone(sampleCourse),id:prefix+'-course',version:0,published:true,sample:false});
+  await d.prepare('INSERT INTO enrollments(user_id,course_id,created_at,authorization_id) VALUES(?,?,?,?)').bind(outsider.id,course.id,time,"fixture").run();
+  await t.test('server-confirmed patches update the workspace without a second request', async()=>{
+   let view=await curriculumOverview(d,owner);
+   const started=await call(owner,{action:'start',version:course.version,draftVersion:0});
+   view=applyCurriculumPatch(view,started.patch);
+   assert.deepEqual(JSON.parse(JSON.stringify(view)),JSON.parse(JSON.stringify(await curriculumOverview(d,owner))));
+   const edited={...view.items.find(i=>i.course.id===course.id).draft.course,title:'Patch test'};
+   const saved=await mutateCurriculum(d,owner,{action:'save',course:edited,version:started.patch.draft.version});
+   view=applyCurriculumPatch(view,saved.patch);
+   assert.deepEqual(JSON.parse(JSON.stringify(view)),JSON.parse(JSON.stringify(await curriculumOverview(d,owner))));
+   const submitted=await call(owner,{action:'submit',version:saved.version});
+   view=applyCurriculumPatch(view,submitted.patch);
+   assert.deepEqual(JSON.parse(JSON.stringify(view)),JSON.parse(JSON.stringify(await curriculumOverview(d,owner))));
+   assert.equal(view.items.find(i=>i.course.id===course.id).draft.state,'submitted');
+   await call(owner,{action:'requestChanges',version:submitted.patch.draft.version,note:'Uji patch'});
+   await d.prepare('DELETE FROM curriculum_drafts WHERE course_id=?').bind(course.id).run();
+   await d.prepare('DELETE FROM curriculum_events WHERE course_id=?').bind(course.id).run();
+  });
+  await t.test('enrollment does not expose curriculum navigation without a course assignment',async()=>{assert.equal(await curriculumEnabled(d,outsider),false);assert.equal(await curriculumEnabled(d,owner),true);});
   await t.test('strict mutations reject chosen actor, invalid IDs and extra privileges',()=>{
    assert.equal(curriculumMutation.safeParse({action:'member',courseId:course.id,userId:writer.id,version:0,active:true,role:'owner'}).success,false);
    assert.equal(curriculumMutation.safeParse({action:'submit',courseId:'../private',version:1}).success,false);
   });
   await t.test('admin grants multiple tutors or dedicated authors per course without teaching or account-management rights',async()=>{
-   await assert.rejects(call(tutor,{action:'start',version:course.version}),status(403));
-   for(const u of [writer,tutor])await call(owner,{action:'member',userId:u.id,version:0,active:true});
+   await assert.rejects(call(tutor,{action:'start',version:course.version}),status(404));
+   for(const u of [writer,tutor])await call(owner,{action:'member',userId:u.id,version:0,active:true,targetGrantVersion:1});
    assert.equal((await curriculumOverview(d,writer)).owner,false);
    assert.equal((await curriculumOverview(d,writer)).people.length,0);
-   assert.equal((await curriculumOverview(d,outsider)).items.length,0);
-   await assert.rejects(call(writer,{action:'member',userId:outsider.id,version:0,active:true}),status(403));
+   await assert.rejects(curriculumOverview(d,outsider),status(403));
+   await assert.rejects(call(writer,{action:'member',userId:outsider.id,version:0,active:true,targetGrantVersion:1}),status(403));
    await assert.rejects(saveCourse(d,writer,course),status(403));
    assert.equal((await registerIdentity(d,{userId:writer.id,displayName:writer.name},false)).role,'curriculum');
-   assert.equal((await registerIdentity(d,{userId:tutor.id,displayName:tutor.name},false)).role,'curriculum');
+   assert.equal((await registerIdentity(d,{userId:tutor.id,displayName:tutor.name},false)).role,'tutor');
    // A real active Tutor grant remains distinct from curriculum membership.
    await d.prepare('INSERT INTO tutor_accounts(user_id,active,granted_by,granted_at) VALUES(?,1,?,?)').bind(tutor.id,owner.id,time).run();
    assert.equal((await registerIdentity(d,{userId:tutor.id,displayName:tutor.name},false)).role,'tutor');
@@ -101,8 +124,8 @@ export async function curriculumScenarios(t,d){
   await t.test('revoking a course assignment immediately removes draft files and notifications without changing tutor rights',async()=>{
    await call(owner,{action:'member',userId:tutor.id,version:1,active:false});
    assert.equal((await curriculumOverview(d,tutor)).items.length,0);
-   await assert.rejects(call(tutor,{action:'submit',version:draft.version}),status(403));
-   await assert.rejects(uploadMedia(d,tutor,{purpose:'course',courseId:course.id},'baru.txt',Buffer.from('X')),status(403));
+   await assert.rejects(call(tutor,{action:'submit',version:draft.version}),status(404));
+   await assert.rejects(uploadMedia(d,tutor,{purpose:'course',courseId:course.id},'baru.txt',Buffer.from('X')),status(404));
    assert.equal((await d.prepare('SELECT role FROM users WHERE id=?').bind(tutor.id).first()).role,'tutor');
    await d.prepare("UPDATE user_access SET status='suspended' WHERE user_id=?").bind(writer.id).run();
    await assert.rejects(call(writer,{action:'submit',version:draft.version}),status(403));

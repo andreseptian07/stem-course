@@ -1,3 +1,4 @@
+import {changePermission} from "../lib/authorization.ts";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -16,6 +17,7 @@ function setup() {
     .filter((f) => f.endsWith(".sql"))
     .sort())
     sql.exec(fs.readFileSync("drizzle/" + f, "utf8"));
+  sql.exec("CREATE TABLE auth_credentials(user_id TEXT PRIMARY KEY,email TEXT)");
   const d = {
     prepare(q) {
       const make = (p = []) => ({
@@ -176,8 +178,9 @@ test("legacy users without access rows require approval, and saved client roles 
     reason: "Review legacy account",
   });
   const u = await registerIdentity(f.d, signed("legacy"), false);
-  assert.equal(u.role, "student");
-  assert.equal(u.accessStatus, "active");
+  assert.equal(u.role,"unclassified");
+  assert.equal(u.accessStatus,"active");
+  assert.throws(()=>requireActive(u),e=>e.status===403);
 });
 test("access mutations reject identity or role injection and require a reason", () => {
   const b = {
@@ -206,4 +209,34 @@ test("once initialized, bootstrap stays closed even if owner settings are accide
     f.sql.prepare("SELECT value FROM settings WHERE key='owner'").get(),
     undefined,
   );
+});
+test("unchanged identities perform no writes but observe role, profile and suspension changes immediately", async () => {
+  const f = await fixture();
+  const writes = [];
+  const tracked = {
+    ...f.d,
+    prepare(q) {
+      writes.push(...(/^\s*(INSERT|UPDATE|DELETE)/i.test(q) ? [q] : []));
+      return f.d.prepare(q);
+    },
+    async batch(items) { writes.push("batch"); return f.d.batch(items); },
+  };
+  assert.equal((await registerIdentity(tracked, signed("alice"), false)).role, "student");
+  assert.deepEqual(writes, []);
+  f.sql.prepare("INSERT INTO tutor_accounts(user_id,active,granted_by,granted_at) VALUES(?,1,?,?)").run("alice","owner",new Date().toISOString());
+  assert.equal((await registerIdentity(tracked,signed("alice"),false)).role,"student");assert.deepEqual(writes,[]);
+  await updateAccess(f.d,f.owner,{userId:"alice",version:1,status:"active",reason:"Approve fixture"});
+  await changePermission(f.d,f.owner,{action:"makeStaff",targetId:"alice",capability:"tutor",principalVersion:1,grantVersion:0,reason:"Explicit fixture promotion"});
+  assert.equal((await registerIdentity(tracked,signed("alice"),false)).role,"tutor");assert.deepEqual(writes,[]);
+  await changePermission(f.d,f.owner,{action:"setGrant",targetId:"alice",capability:"tutor",active:false,principalVersion:2,grantVersion:1,reason:"Revoke fixture"});
+  assert.equal((await registerIdentity(tracked,signed("alice"),false)).role,"staff");assert.deepEqual(writes,[]);
+  f.sql.prepare("INSERT INTO profiles(user_id,data,updated_at) VALUES(?,?,?)").run("alice", JSON.stringify({ displayName: "Nama tersimpan" }), new Date().toISOString());
+  assert.equal((await registerIdentity(tracked, signed("alice"), false)).name, "Nama tersimpan");
+  f.sql.prepare("UPDATE user_access SET status='suspended',version=version+1 WHERE user_id=?").run("alice");
+  writes.length = 0;
+  const suspended = await registerIdentity(tracked, signed("alice"), false);
+  assert.equal(suspended.accessStatus, "suspended");
+  assert.equal(suspended.accessVersion,3);
+  assert.deepEqual(writes, []);
+  assert.throws(() => requireActive(suspended), e => e.status === 403);
 });

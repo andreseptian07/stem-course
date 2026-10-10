@@ -1,10 +1,12 @@
+import {evaluateGraduation} from "./graduation.ts";
+import type {GraduationState} from "./model.ts";
 import type { MediaInfo } from "./media-model.ts";
 import { z } from "zod";
 import type { DashboardProject } from "./projects";
 import type { TutorDashboard } from "./tutor-dashboard";
 import type { Course, Progress } from "./model";
 import { catalogCourse } from "./catalog.ts";
-import { blockingLesson, progressFor } from "./rules.ts";
+
 export const profileSchema = z
   .object({
     version: z.number().int().nonnegative(),
@@ -51,16 +53,18 @@ export function dashboardCourse(
   c: Course,
   progress: Progress[],
   enrolledAt: string | null,
+  graduation?:GraduationState,
+  perClass:GraduationState[] = [],
 ) {
-  const completed = c.lessons.filter(
-    (l) => progressFor(l, progress)?.complete,
-  ).length;
+  const academic=graduation||evaluateGraduation({course:c,progress,reviews:[],classId:null});
+  const classResults=perClass.map(state=>({classId:state.classId,className:state.className,completed:state.lessons.filter(l=>l.stagePassed).length,total:c.lessons.length,finished:state.passed}));
+  const completed=classResults.length?Math.min(...classResults.map(state=>state.completed)):academic.lessons.filter(l=>l.stagePassed).length;
   const stale = c.lessons.filter((l) =>
-    progress.some((p) => p.lessonId === l.id && p.revision !== l.revision),
+    !progress.some(p=>p.lessonId===l.id&&p.revision===l.revision)&&progress.some((p) => p.lessonId === l.id && p.revision !== l.revision),
   ).length;
-  const unfinished = c.lessons.find((l) => !progressFor(l, progress)?.complete);
+  const unfinished = c.lessons.find((l) => !academic.lessons.find(p=>p.lessonId===l.id)?.stagePassed);
   const resume = unfinished
-    ? blockingLesson(c, unfinished.id, progress) || unfinished
+    ? unfinished
     : c.lessons.at(-1);
   return {
     ...catalogCourse(c),
@@ -70,6 +74,9 @@ export function dashboardCourse(
       ? Math.round((completed / c.lessons.length) * 100)
       : 0,
     enrolledAt,
+    classId:academic.classId,
+    graduation:academic,
+    classResults,
     resumeLesson: resume?.id || null,
     finished: !!c.lessons.length && completed === c.lessons.length,
   };
@@ -89,7 +96,7 @@ export type AccountSession = {
   url: string;
 };
 export type AccountState = {
-  user: { id: string; name: string; role: string; email: string };
+  user: import("./authorization").AccessContext & {email:string};
   profile: Profile;
   photo: MediaInfo | null;
   courses: DashboardCourse[];

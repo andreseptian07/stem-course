@@ -1,3 +1,4 @@
+import {seedSqlitePrincipal} from "./authorization-fixture.mjs";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -78,6 +79,12 @@ function setup() {
   sql
     .prepare("INSERT INTO courses(id,data,version) VALUES(?,?,1)")
     .run(sampleCourse.id, JSON.stringify(sampleCourse));
+  sql.prepare("INSERT INTO settings(key,value) VALUES('owner','owner')").run();
+  seedSqlitePrincipal(sql,"owner","staff");
+  seedSqlitePrincipal(sql,"mentor","staff",["tutor"]);
+  seedSqlitePrincipal(sql,"other","staff",["tutor"]);
+  seedSqlitePrincipal(sql,"alice","student");
+  seedSqlitePrincipal(sql,"bob","student");
   return { d, sql, ...users };
 }
 const form = (id = "class-a", mentorId = "mentor") => ({
@@ -85,6 +92,7 @@ const form = (id = "class-a", mentorId = "mentor") => ({
   version: 0,
   courseId: sampleCourse.id,
   mentorId,
+  targetGrantVersion: 1,
   name: "Kelas STEM",
   description: "Belajar bersama",
   startsAt: null,
@@ -145,7 +153,7 @@ test("owner configures classes with optimistic versions; student cannot assign m
   );
   await assert.rejects(
     () => saveClass(d, owner, { ...form("class-b", "missing") }),
-    (e) => e.status === 400,
+    (e) => e.status === 401,
   );
   await saveClass(d, owner, { ...form(), version: 1, name: "Changed" });
   assert.equal(sql.prepare("SELECT version FROM cohorts").get().version, 2);
@@ -191,21 +199,21 @@ test("mentor has no authority outside assigned classes and loses access after re
   await setMembership(d, owner, "class-a", "alice", "approved");
   await assert.rejects(
     () => classAccess(d, mentor, "class-b", "staff"),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
   await assert.rejects(
     () => addFeedback(d, other, "class-a", "alice", "secret"),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
   await addPost(d, mentor, "class-a", "announcement", "welcome");
   await saveClass(d, owner, { ...form(), version: 1, mentorId: "other" });
   await assert.rejects(
     () => addPost(d, mentor, "class-a", "announcement", "not allowed"),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
   await assert.rejects(
     () => addFeedback(d, mentor, "class-a", "alice", "not allowed"),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
 });
 test("student sees own feedback, no roster, no other classmates private feedback or session in summaries", async () => {
@@ -247,7 +255,7 @@ test("progress is revision-aware; reset never grants pass and blocks active code
   await setMembership(d, owner, "class-a", "alice", "approved");
   sql
     .prepare(
-      "INSERT INTO progress(user_id,course_id,lesson_id,revision,complete,quiz_attempts) VALUES(?,?,?,?,?,?)",
+      "INSERT INTO learning_progress_revisions(user_id,course_id,lesson_id,revision,complete,quiz_attempts) VALUES(?,?,?,?,?,?)",
     )
     .run("alice", sampleCourse.id, "sensor", 0, 1, 4);
   let roster = (await classDetail(d, mentor, "class-a")).members[0];
@@ -257,15 +265,15 @@ test("progress is revision-aware; reset never grants pass and blocks active code
     () => resetClassAttempts(d, mentor, "class-a", "alice", "sensor"),
     (e) => e.status === 409,
   );
-  sql.prepare("UPDATE progress SET revision=1,complete=0").run();
+  sql.prepare("UPDATE learning_progress_revisions SET revision=1,complete=0").run();
   await resetClassAttempts(d, mentor, "class-a", "alice", "sensor");
   assert.equal(
-    sql.prepare("SELECT quiz_attempts,quiz_passed FROM progress").get()
+    sql.prepare("SELECT quiz_attempts,quiz_passed FROM learning_progress_revisions").get()
       .quiz_attempts,
     0,
   );
   assert.equal(
-    sql.prepare("SELECT quiz_passed FROM progress").get().quiz_passed,
+    sql.prepare("SELECT quiz_passed FROM learning_progress_revisions").get().quiz_passed,
     0,
   );
   sql
@@ -290,7 +298,7 @@ test("archive is read-only and membership revocation protects posts and feedback
   assert.equal("feedback" in removed, false);
   await assert.rejects(
     () => addPost(d, alice, "class-a", "discussion", "forbidden"),
-    (e) => e.status === 403,
+    (e) => e.status === 404,
   );
   await saveClass(d, owner, { ...form(), version: 1, status: "archived" });
   await assert.rejects(
@@ -370,12 +378,12 @@ test("membership and mentor changes at write time cannot bypass scoped permissio
   sql.prepare("UPDATE cohorts SET mentor_id='mentor'").run();
   sql
     .prepare(
-      "INSERT INTO progress(user_id,course_id,lesson_id,revision,quiz_attempts) VALUES('alice',?,'sensor',1,3)",
+      "INSERT INTO learning_progress_revisions(user_id,course_id,lesson_id,revision,quiz_attempts) VALUES('alice',?,'sensor',1,3)",
     )
     .run(sampleCourse.id);
   await assert.rejects(() =>
     resetClassAttempts(
-      race("UPDATE progress"),
+      race("UPDATE learning_progress_revisions"),
       mentor,
       "class-a",
       "alice",
@@ -383,7 +391,7 @@ test("membership and mentor changes at write time cannot bypass scoped permissio
     ),
   );
   assert.equal(
-    sql.prepare("SELECT quiz_attempts FROM progress").get().quiz_attempts,
+    sql.prepare("SELECT quiz_attempts FROM learning_progress_revisions").get().quiz_attempts,
     3,
   );
 });

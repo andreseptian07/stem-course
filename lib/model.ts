@@ -29,6 +29,9 @@ export type Exercise = {
 export type Lesson = {
   id: string;
   revision: number;
+  contentRevision?: number;
+  reviewRequirements?: ReviewRequirement[];
+  change?: { kind: "editorial" | "substantial"; reason: string };
   module: string;
   title: string;
   minutes: number;
@@ -46,6 +49,12 @@ export type Course = {
   published: boolean;
   sample: boolean;
   certificateEnabled?: boolean;
+  graduationPolicyVersion?: 2;
+  reviewPassThreshold?: number;
+  retiredLessonIds?:string[];
+  retiredRequirementIds?:string[];
+  learningMode?: "class_required" | "independent_allowed";
+  policyState?: "needs_mapping" | "ready";
   overview?: {
     outcomes: string[];
     requirements: string[];
@@ -65,10 +74,28 @@ export type Progress = {
   quizAttempts: number;
   codeAttempts: number;
   score: number;
+  version?: number;
+  quizEvidenceId?: string | null;
+  codeEvidenceId?: string | null;
+  provenance?: string;
+};
+export type ReviewRequirement = { id: string; title: string; instructions: string; rubric: string; revision: number };
+export type GraduationBlocker = { code: string; message: string; lessonId?: string; assignmentId?: string };
+export type GraduationLesson = {
+  lessonId: string; unlocked: boolean; stagePassed: boolean;
+  platform: { complete: boolean; quizPassed: boolean; codePassed: boolean };
+  requiredReviews: { id: string; title: string; assignmentId: string | null; status: string; score: number | null; minimumScore: number; passed: boolean }[];
+  blockers: GraduationBlocker[];
+};
+export type GraduationState = {
+  classId: string | null; className: string | null;
+  classes: { id: string; name: string }[];
+  problem: GraduationBlocker | null; lessons: GraduationLesson[]; passed: boolean;
 };
 export type PublicLesson = Omit<Lesson, "quiz" | "exercise"> & {
   locked: boolean;
   blocker?: string;
+  graduation?: GraduationLesson;
   quiz?: Omit<Quiz, "questions"> & {
     questions: Omit<Question, "correct" | "explanation">[];
   };
@@ -79,6 +106,7 @@ export type PublicLesson = Omit<Lesson, "quiz" | "exercise"> & {
 };
 export type PublicCourse = Omit<Course, "lessons"> & {
   lessons: PublicLesson[];
+  graduation?: GraduationState;
 };
 export type Session = {
   id: string;
@@ -105,9 +133,14 @@ export type Discussion = {
   createdAt: string;
 };
 export type State = {
+  curriculum?: boolean;
   user: { id: string; name: string; role: string };
   courses: PublicCourse[];
   progress: Record<string, Progress[]>;
   sessions: Session[];
+  classSessions?: {
+    id: string; classId: string; className: string; courseId: string; courseTitle: string;
+    title: string; kind: "online" | "offline"; startsAt: string; duration: number; location: string; url: string;
+  }[];
   judgeReady: boolean;
 };

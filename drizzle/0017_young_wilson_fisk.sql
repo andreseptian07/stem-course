@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `academic_submission_attempt` ON `project_submissions` (`assignment_id`,`student_id`,`attempt`);
