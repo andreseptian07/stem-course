@@ -13,11 +13,11 @@ export function reportCsv(report: ManagementReport, kind: ReportExport) {
   const values = [report.generatedAt, report.periodStart, report.days, report.selectedCourseId || 'Semua', report.includeSamples ? 'Ya' : 'Tidak'];
   let headers: string[], rows: unknown[][];
   if (kind === 'courses') {
-    headers = ['ID course', 'Course', 'Status', 'Contoh', 'Materi', 'Peserta-course', 'Selesai materi dan tes wajib', 'Sedang belajar', 'Belum ada progres/aktivitas', 'Aktif periode', 'Progres revisi lama', 'Penyelesaian persen', 'Sertifikat valid'];
+    headers = ['ID course', 'Course', 'Status', 'Contoh', 'Materi', 'Peserta-course', 'Seluruh tahap lulus', 'Sedang belajar', 'Belum ada progres/aktivitas', 'Aktif periode', 'Progres revisi lama', 'Penyelesaian persen', 'Sertifikat valid'];
     rows = report.courses.map(c => [c.id, c.title, c.published ? 'Terbit' : 'Draft', c.sample ? 'Ya' : 'Tidak', c.lessonCount, c.participants, c.finished, c.inProgress, c.notStarted, c.activeInPeriod, c.staleParticipants, c.completionPercent, c.validCertificates]);
   }
   else if (kind === 'participants') {
-    headers = ['ID akun', 'Nama', 'Peran', 'Akses', 'ID course', 'Course', 'Daftar (UTC)', 'Materi selesai', 'Total materi', 'Progres persen', 'Selesai materi dan tes wajib', 'Materi revisi lama', 'Percobaan kuis periode', 'Percobaan kode periode', 'Kiriman tugas periode', 'Posting periode', 'Aktif periode', 'Aktivitas terakhir tercatat (UTC)'];
+    headers = ['ID akun', 'Nama', 'Peran', 'Akses', 'ID course', 'Course', 'Daftar (UTC)', 'Tahap lulus', 'Total materi', 'Progres persen', 'Seluruh tahap lulus', 'Materi revisi lama', 'Percobaan kuis periode', 'Percobaan kode periode', 'Kiriman tugas periode', 'Posting periode', 'Aktif periode', 'Aktivitas terakhir tercatat (UTC)'];
     rows = report.participants.map(p => [p.userId, p.name, p.role, reportAccess(p.accessStatus), p.courseId, p.courseTitle, p.enrolledAt, p.completed, p.total, p.percent, p.finished ? 'Ya' : 'Tidak', p.stale, p.quizAttempts, p.codeAttempts, p.submissions, p.posts, p.activeInPeriod ? 'Ya' : 'Tidak', p.lastActivityAt]);
   }
   else {
